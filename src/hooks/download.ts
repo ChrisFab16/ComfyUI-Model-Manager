@@ -20,35 +20,41 @@ export const useDownload = defineStore('download', (store) => {
 
   const taskList = ref<DownloadTask[]>([])
 
-  const createTaskItem = (item: DownloadTaskOptions) => {
-    const { downloadedSize, totalSize, bps, ...rest } = item
+  const createTaskItem = (item: DownloadTaskOptions): DownloadTask => {
+    const { downloadedSize, totalSize, bps, preview, ...rest } = item
 
     const task: DownloadTask = {
       ...rest,
-      preview: `/model-manager/preview/download/${item.preview}`,
+      preview: preview || '/model-manager/preview/no-preview.png', // Fallback to no-preview
       downloadProgress: `${bytesToSize(downloadedSize)} / ${bytesToSize(totalSize)}`,
       downloadSpeed: `${bytesToSize(bps)}/s`,
       pauseTask() {
-        wrapperToastError(async () =>
-          request(`/download/${item.taskId}`, {
+        wrapperToastError(async () => {
+          const response = await request(`/model-manager/download/${item.taskId}`, {
             method: 'PUT',
             body: JSON.stringify({
               status: 'pause',
             }),
-          }),
-        )()
+          })
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to pause task')
+          }
+        })()
       },
-      resumeTask: () => {
-        wrapperToastError(async () =>
-          request(`/download/${item.taskId}`, {
+      resumeTask() {
+        wrapperToastError(async () => {
+          const response = await request(`/model-manager/download/${item.taskId}`, {
             method: 'PUT',
             body: JSON.stringify({
               status: 'resume',
             }),
-          }),
-        )()
+          })
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to resume task')
+          }
+        })()
       },
-      deleteTask: () => {
+      deleteTask() {
         confirm.require({
           message: t('deleteAsk', [t('downloadTask').toLowerCase()]),
           header: 'Danger',
@@ -63,11 +69,15 @@ export const useDownload = defineStore('download', (store) => {
             severity: 'danger',
           },
           accept: () => {
-            wrapperToastError(async () =>
-              request(`/download/${item.taskId}`, {
+            wrapperToastError(async () => {
+              const response = await request(`/model-manager/download/${item.taskId}`, {
                 method: 'DELETE',
-              }),
-            )()
+              })
+              if (!response.success) {
+                throw new Error(response.error || 'Failed to delete task')
+              }
+              taskList.value = taskList.value.filter((task) => task.taskId !== item.taskId)
+            })()
           },
           reject: () => {},
         })
@@ -78,17 +88,24 @@ export const useDownload = defineStore('download', (store) => {
   }
 
   const refresh = wrapperToastError(async () => {
-    return request('/download/task').then((resData: DownloadTaskOptions[]) => {
-      taskList.value = resData.map((item) => createTaskItem(item))
+    const response = await request('/model-manager/download/task', { method: 'GET' })
+    if (response.success) {
+      taskList.value = response.data.map((item: DownloadTaskOptions) => createTaskItem(item))
       return taskList.value
-    })
+    }
+    throw new Error(response.error || 'Failed to fetch tasks')
   })
 
-  // Initial download settings
-  // Migrate API keys from user settings to private key
+  // Initialize download settings (e.g., API keys)
   const init = async () => {
-    const res = await request('/download/init', { method: 'POST' })
-    store.config.apiKeyInfo.value = res
+    try {
+      const response = await request('/model-manager/download/setting', { method: 'GET' })
+      if (response.success) {
+        store.config.apiKeyInfo.value = response.data
+      }
+    } catch (error) {
+      console.error('Failed to initialize download settings:', error)
+    }
   }
 
   onBeforeMount(() => {
@@ -98,22 +115,8 @@ export const useDownload = defineStore('download', (store) => {
       refresh()
     })
 
-    api.addEventListener('fetch_download_task_list', (event) => {
-      const data = event.detail as DownloadTaskOptions[]
-
-      taskList.value = data.map((item) => {
-        return createTaskItem(item)
-      })
-    })
-
-    api.addEventListener('create_download_task', (event) => {
-      const item = event.detail as DownloadTaskOptions
-      taskList.value.unshift(createTaskItem(item))
-    })
-
     api.addEventListener('update_download_task', (event) => {
       const item = event.detail as DownloadTaskOptions
-
       for (const task of taskList.value) {
         if (task.taskId === item.taskId) {
           if (item.error) {
@@ -130,21 +133,18 @@ export const useDownload = defineStore('download', (store) => {
       }
     })
 
-    api.addEventListener('delete_download_task', (event) => {
-      const taskId = event.detail as string
-      taskList.value = taskList.value.filter((item) => item.taskId !== taskId)
-    })
-
     api.addEventListener('complete_download_task', (event) => {
       const taskId = event.detail as string
       const task = taskList.value.find((item) => item.taskId === taskId)
       taskList.value = taskList.value.filter((item) => item.taskId !== taskId)
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: `${task?.fullname} Download completed`,
-        life: 2000,
-      })
+      if (task) {
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: `${task.fullname} Download completed`,
+          life: 2000,
+        })
+      }
       store.models.refresh()
     })
   })
@@ -167,7 +167,7 @@ export const useModelSearch = () => {
   const { toast } = useToast()
   const data = ref<(SelectOptions & { item: VersionModel })[]>([])
   const current = ref<string | number>()
-  const currentModel = ref<BaseModel>()
+  const currentModel = ref<VersionModel>()
 
   const handleSearchByUrl = async (url: string) => {
     if (!url) {
@@ -175,40 +175,46 @@ export const useModelSearch = () => {
     }
 
     loading.show()
-    return request(`/model-info?model-page=${encodeURIComponent(url)}`, {})
-      .then((resData: VersionModel[]) => {
-        data.value = resData.map((item) => ({
-          label: item.shortname,
-          value: item.id,
-          item,
-          command() {
-            current.value = item.id
-          },
-        }))
-        current.value = data.value[0]?.value
-        currentModel.value = data.value[0]?.item
-
-        if (resData.length === 0) {
-          toast.add({
-            severity: 'warn',
-            summary: 'No Model Found',
-            detail: `No model found for ${url}`,
-            life: 3000,
-          })
-        }
-
-        return resData
+    try {
+      const response = await request(`/model-manager/model-info?model-page=${encodeURIComponent(url)}`, {
+        method: 'GET',
       })
-      .catch((err) => {
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to search models')
+      }
+      const resData: VersionModel[] = response.data
+      data.value = resData.map((item) => ({
+        label: item.shortname || item.name || item.id,
+        value: item.id,
+        item,
+        command() {
+          current.value = item.id
+        },
+      }))
+      current.value = data.value[0]?.value
+      currentModel.value = data.value[0]?.item
+
+      if (resData.length === 0) {
         toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: err.message,
-          life: 15000,
+          severity: 'warn',
+          summary: 'No Model Found',
+          detail: `No model found for ${url}`,
+          life: 3000,
         })
-        return []
+      }
+
+      return resData
+    } catch (err) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: err.message || 'Failed to search models',
+        life: 15000,
       })
-      .finally(() => loading.hide())
+      return []
+    } finally {
+      loading.hide()
+    }
   }
 
   watch(current, () => {
