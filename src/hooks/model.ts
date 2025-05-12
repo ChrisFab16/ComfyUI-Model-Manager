@@ -6,7 +6,7 @@ import { defineStore } from 'hooks/store'
 import { useToast } from 'hooks/toast'
 import { castArray, cloneDeep } from 'lodash'
 import { TreeNode } from 'primevue/treenode'
-import { app } from 'scripts/comfyAPI'
+import { api, app } from 'scripts/comfyAPI'
 import { BaseModel, Model, SelectEvent, WithResolved } from 'types/typings'
 import { bytesToSize, formatDate, previewUrlToFile } from 'utils/common'
 import { ModelGrid } from 'utils/legacy'
@@ -34,14 +34,13 @@ const modelFolderProvideKey = Symbol('modelFolder') as InjectionKey<
 >
 
 export const genModelFullName = (model: BaseModel) => {
-  return [model.subFolder, `${model.basename}${model.extension}`]
-    .filter(Boolean)
-    .join('/')
+  const filename = `${model.basename}${model.extension || ''}`
+  return [model.subFolder, filename].filter(Boolean).join('/')
 }
 
 export const genModelUrl = (model: BaseModel) => {
   const fullname = genModelFullName(model)
-  return `/model/${model.type}/${model.pathIndex}/${fullname}`
+  return `/model-manager/model/${model.type}/${model.pathIndex}/${fullname}`
 }
 
 export const useModels = defineStore('models', (store) => {
@@ -51,28 +50,85 @@ export const useModels = defineStore('models', (store) => {
 
   const folders = ref<ModelFolder>({})
   const initialized = ref(false)
+  const models = ref<Record<string, Model[]>>({})
+  const scanTasks = ref<Record<string, { taskId: string; status: string; error: string | null }>>({})
 
   const refreshFolders = async () => {
-    return request('/models').then((resData) => {
-      folders.value = resData
+    try {
+      const response = await request('/model-manager/models')
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to fetch model folders')
+      }
+      folders.value = response.data
       initialized.value = true
-    })
+    } catch (error) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: error.message || 'Failed to fetch model folders',
+        life: 5000,
+      })
+    }
   }
 
   provide(modelFolderProvideKey, folders)
 
-  const models = ref<Record<string, Model[]>>({})
-
   const refreshModels = async (folder: string) => {
+    if (!folder || scanTasks.value[folder]?.status === 'running') return
+
     loading.show(folder)
-    return request(`/models/${folder}`)
-      .then((resData) => {
-        models.value[folder] = resData
-        return resData
+    try {
+      const response = await request(`/model-manager/scan/start?folder=${folder}`)
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to start scan')
+      }
+      const { taskId } = response
+      scanTasks.value[folder] = { taskId, status: 'running', error: null }
+      pollScanStatus(folder, taskId)
+    } catch (error) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: error.message || 'Failed to start model scan',
+        life: 5000,
       })
-      .finally(() => {
+      loading.hide(folder)
+    }
+  }
+
+  const pollScanStatus = async (folder: string, taskId: string) => {
+    try {
+      const response = await request(`/model-manager/scan/status/${taskId}`)
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to get scan status')
+      }
+      const { status, data, error } = response
+      scanTasks.value[folder] = { taskId, status, error }
+      models.value[folder] = data
+
+      if (status === 'running') {
+        setTimeout(() => pollScanStatus(folder, taskId), 1000)
+      } else if (status === 'failed') {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: error || 'Model scan failed',
+          life: 5000,
+        })
         loading.hide(folder)
+      } else if (status === 'completed') {
+        loading.hide(folder)
+      }
+    } catch (error) {
+      scanTasks.value[folder] = { taskId, status: 'failed', error: error.message || 'Failed to get scan status' }
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: error.message || 'Failed to get scan status',
+        life: 5000,
       })
+      loading.hide(folder)
+    }
   }
 
   const refreshAllModels = async (force = false) => {
@@ -117,18 +173,20 @@ export const useModels = defineStore('models', (store) => {
 
     // Check current description
     if (model.description !== data.description) {
-      updateData.set('description', data.description)
+      updateData.set('description', data.description || '')
       needUpdate = true
     }
 
     // Check current name and pathIndex
     if (
       model.subFolder !== data.subFolder ||
-      model.pathIndex !== data.pathIndex
+      model.pathIndex !== data.pathIndex ||
+      model.basename !== data.basename ||
+      model.type !== data.type
     ) {
       oldKey = genModelKey(model)
-      updateData.set('type', data.type)
-      updateData.set('pathIndex', data.pathIndex.toString())
+      updateData.set('type', data.type || model.type)
+      updateData.set('pathIndex', String(data.pathIndex || model.pathIndex))
       updateData.set('fullname', genModelFullName(data as BaseModel))
       needUpdate = true
     }
@@ -138,30 +196,28 @@ export const useModels = defineStore('models', (store) => {
     }
 
     loading.show()
-
-    await request(genModelUrl(model), {
-      method: 'PUT',
-      body: updateData,
-    })
-      .catch((err) => {
-        const error_message = err.message ?? err.error
-        toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: `Failed to update model: ${error_message}`,
-          life: 15000,
-        })
-        throw new Error(error_message)
+    try {
+      const response = await request(genModelUrl(model), {
+        method: 'PUT',
+        body: updateData,
       })
-      .finally(() => {
-        loading.hide()
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update model')
+      }
+      if (oldKey) {
+        store.dialog.close({ key: oldKey })
+      }
+      await refreshModels(data.type)
+    } catch (error) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: error.message || 'Failed to update model',
+        life: 5000,
       })
-
-    if (oldKey) {
-      store.dialog.close({ key: oldKey })
+    } finally {
+      loading.hide()
     }
-
-    refreshModels(data.type)
   }
 
   const deleteModel = async (model: BaseModel) => {
@@ -185,7 +241,10 @@ export const useModels = defineStore('models', (store) => {
           request(genModelUrl(model), {
             method: 'DELETE',
           })
-            .then(() => {
+            .then((response) => {
+              if (!response.success) {
+                throw new Error(response.error || 'Failed to delete model')
+              }
               toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -198,12 +257,12 @@ export const useModels = defineStore('models', (store) => {
             .then(() => {
               resolve(void 0)
             })
-            .catch((e) => {
+            .catch((error) => {
               toast.add({
                 severity: 'error',
                 summary: 'Error',
-                detail: e.message ?? 'Failed to delete model',
-                life: 15000,
+                detail: error.message || 'Failed to delete model',
+                life: 5000,
               })
             })
             .finally(() => {
@@ -234,10 +293,50 @@ export const useModels = defineStore('models', (store) => {
     return [prefixPath, fullname].filter(Boolean).join('/')
   }
 
+  onMounted(() => {
+    api.addEventListener('update_scan_task', (event) => {
+      const { task_id, file } = event.detail
+      for (const folder in scanTasks.value) {
+        if (scanTasks.value[folder].taskId === task_id) {
+          models.value[folder] = [...(models.value[folder] || []), file]
+        }
+      }
+    })
+
+    api.addEventListener('complete_scan_task', (event) => {
+      const { task_id, results } = event.detail
+      for (const folder in scanTasks.value) {
+        if (scanTasks.value[folder].taskId === task_id) {
+          models.value[folder] = results
+          scanTasks.value[folder].status = 'completed'
+          loading.hide(folder)
+        }
+      }
+    })
+
+    api.addEventListener('error_scan_task', (event) => {
+      const { task_id, error } = event.detail
+      for (const folder in scanTasks.value) {
+        if (scanTasks.value[folder].taskId === task_id) {
+          scanTasks.value[folder].status = 'failed'
+          scanTasks.value[folder].error = error
+          toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error || 'Model scan failed',
+            life: 5000,
+          })
+          loading.hide(folder)
+        }
+      }
+    })
+  })
+
   return {
     initialized: initialized,
     folders: folders,
     data: models,
+    scanTasks,
     refresh: refreshAllModels,
     remove: deleteModel,
     update: updateModel,
@@ -444,18 +543,19 @@ export const useModelBaseInfo = () => {
 export const useModelFolder = (
   option: {
     type?: MaybeRefOrGetter<string | undefined>
+    models?: Ref<Model[]> // Optional: Use external model list (e.g., from DialogScanning.vue)
   } = {},
 ) => {
-  const { data: models, folders: modelFolders } = useModels()
+  const { data: storeModels, folders: modelFolders } = useModels()
 
   const pathOptions = computed(() => {
     const type = toValue(option.type)
-
     if (!type) {
       return []
     }
 
-    const folderItems = cloneDeep(models.value[type]) ?? []
+    // Use provided models (e.g., scanModelsList) or store models
+    const folderItems = cloneDeep(option.models?.value || storeModels.value[type] || [])
     const pureFolders = folderItems.filter((item) => item.isFolder)
     pureFolders.sort((a, b) => a.basename.localeCompare(b.basename))
 
@@ -511,12 +611,6 @@ export const useModelFolder = (
 
 /**
  * Editable preview image.
- *
- * In edit mode, there are 4 methods for setting a preview picture:
- * 1. default value, which is the default image of the model type
- * 2. network picture
- * 3. local file
- * 4. no preview
  */
 const previewKey = Symbol('preview') as InjectionKey<
   ReturnType<typeof useModelPreviewEditor>
@@ -601,15 +695,11 @@ export const useModelPreviewEditor = (formInstance: ModelFormInstance) => {
     previewType,
     typeOptions,
     currentType,
-    // default value
     defaultContent,
     defaultContentPage,
-    // network picture
     networkContent,
-    // local file
     localContent,
     updateLocalContent,
-    // no preview
     noPreviewContent,
   }
 
@@ -703,18 +793,6 @@ export const useModelNodeAction = () => {
 
   const dragToAddModelNode = wrapperToastError(
     (model: BaseModel, event: DragEvent) => {
-      // const target = document.elementFromPoint(event.clientX, event.clientY)
-      // if (
-      //   target?.tagName.toLocaleLowerCase() === 'canvas' &&
-      //   target.id === 'graph-canvas'
-      // ) {
-      //   const pos = app.clientPosToCanvasPos([event.clientX - 20, event.clientY])
-      //   const node = createNode({ pos })
-      //   app.graph.add(node)
-      //   app.canvas.selectNode(node)
-      // }
-      //
-      // Use the legacy method instead
       const removeEmbeddingExtension = true
       const strictDragToAdd = false
 
