@@ -7,7 +7,7 @@ import { useToast } from 'hooks/toast'
 import { castArray, cloneDeep } from 'lodash'
 import { TreeNode } from 'primevue/treenode'
 import { app } from 'scripts/comfyAPI'
-import { BaseModel, Model, SelectEvent, WithResolved } from 'types/typings'
+import { BaseModel, Model, SelectEvent, VersionModel, WithResolved } from 'types/typings'
 import { bytesToSize, formatDate, previewUrlToFile } from 'utils/common'
 import { ModelGrid } from 'utils/legacy'
 import { genModelKey, resolveModelTypeLoader } from 'utils/model'
@@ -20,7 +20,6 @@ import {
   onUnmounted,
   provide,
   type Ref,
-  ref,
   toRaw,
   toValue,
   unref,
@@ -56,20 +55,23 @@ export const useModels = defineStore('models', (store) => {
   const scanTasks = ref<Record<string, { taskId: string; status: string; error: string | null }>>({})
 
   const refreshFolders = async () => {
+    loading.show('folders')
     try {
       const response = await request('/model-manager/models')
       if (!response.success) {
-        throw new Error(response.error || 'Failed to fetch model folders')
+        throw new Error(response.error || t('fetchFoldersFailed'))
       }
       folders.value = response.data
       initialized.value = true
     } catch (error) {
       toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Failed to fetch model folders',
+        summary: t('error'),
+        detail: error.message || t('fetchFoldersFailed'),
         life: 5000,
       })
+    } finally {
+      loading.hide('folders')
     }
   }
 
@@ -81,29 +83,30 @@ export const useModels = defineStore('models', (store) => {
     if (!(folder in folders.value)) {
       toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: `Invalid model type: ${folder}`,
+        summary: t('error'),
+        detail: t('invalidModelType', { type: folder }),
         life: 5000,
       })
       return
     }
 
-    loading.show(folder)
+    loading.show(`scan-${folder}`)
     try {
       const response = await request(`/model-manager/scan/start?folder=${folder}`)
       if (!response.success) {
-        throw new Error(response.error || 'Failed to start scan')
+        throw new Error(response.error || t('scanStartFailed'))
       }
       const { taskId } = response
       scanTasks.value[folder] = { taskId, status: 'running', error: null }
     } catch (error) {
       toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Failed to start model scan',
+        summary: t('error'),
+        detail: error.message || t('scanStartFailed'),
         life: 5000,
       })
-      loading.hide(folder)
+    } finally {
+      loading.hide(`scan-${folder}`)
     }
   }
 
@@ -123,17 +126,7 @@ export const useModels = defineStore('models', (store) => {
         Object.keys(folders.value)
           .filter((folder) => !customBlackList.includes(folder))
           .map(async (folder) => {
-            try {
-              await refreshModels(folder)
-            } catch (error) {
-              toast.add({
-                severity: 'error',
-                summary: 'Error',
-                detail: `Failed to refresh models for ${folder}: ${error.message || 'Unknown error'}`,
-                life: 5000,
-              })
-              throw error
-            }
+            await refreshModels(folder)
           }),
       ),
     )
@@ -141,8 +134,8 @@ export const useModels = defineStore('models', (store) => {
     if (failures > 0) {
       toast.add({
         severity: 'warn',
-        summary: 'Partial Failure',
-        detail: `Failed to refresh ${failures} model types`,
+        summary: t('partialFailure'),
+        detail: t('refreshFailures', { count: failures }),
         life: 5000,
       })
     }
@@ -150,7 +143,7 @@ export const useModels = defineStore('models', (store) => {
 
   const updateModel = async (
     model: BaseModel,
-    data: WithResolved<BaseModel>,
+    data: WithResolved<BaseModel | VersionModel>,
     formData?: FormData,
   ) => {
     const updateData = formData || new FormData()
@@ -158,11 +151,12 @@ export const useModels = defineStore('models', (store) => {
     let needUpdate = false
 
     // Validate inputs
+    const invalidChars = /[\\/:*?"<>|]/
     if (!data.type || !(data.type in folders.value)) {
       toast.add({
         severity: 'error',
-        summary: 'Validation Error',
-        detail: 'Invalid model type',
+        summary: t('validationError'),
+        detail: t('modelTypeInvalid'),
         life: 5000,
       })
       return
@@ -170,18 +164,35 @@ export const useModels = defineStore('models', (store) => {
     if (!data.basename) {
       toast.add({
         severity: 'error',
-        summary: 'Validation Error',
-        detail: 'Model name is required',
+        summary: t('validationError'),
+        detail: t('modelNameRequired'),
         life: 5000,
       })
       return
     }
-    const invalidChars = /[\\/:*?"<>|]/
     if (invalidChars.test(data.basename)) {
       toast.add({
         severity: 'error',
-        summary: 'Validation Error',
-        detail: 'Model name contains invalid characters: \\ / : * ? " < > |',
+        summary: t('validationError'),
+        detail: t('modelNameInvalid'),
+        life: 5000,
+      })
+      return
+    }
+    if (data.subFolder && invalidChars.test(data.subFolder)) {
+      toast.add({
+        severity: 'error',
+        summary: t('validationError'),
+        detail: t('subFolderInvalid'),
+        life: 5000,
+      })
+      return
+    }
+    if (data.extension && !['.safetensors', '.ckpt', '.pt', '.bin', '.pth'].includes(data.extension.toLowerCase())) {
+      toast.add({
+        severity: 'error',
+        summary: t('validationError'),
+        detail: t('extensionInvalid'),
         life: 5000,
       })
       return
@@ -189,8 +200,17 @@ export const useModels = defineStore('models', (store) => {
     if (data.pathIndex < 0 || data.pathIndex >= (folders.value[data.type]?.length || 0)) {
       toast.add({
         severity: 'error',
-        summary: 'Validation Error',
-        detail: 'Invalid path index',
+        summary: t('validationError'),
+        detail: t('pathIndexInvalid'),
+        life: 5000,
+      })
+      return
+    }
+    if (models.value[data.type]?.find((m) => m.basename === data.basename && m.subFolder === data.subFolder && m.extension === data.extension)) {
+      toast.add({
+        severity: 'error',
+        summary: t('validationError'),
+        detail: t('modelNameExists'),
         life: 5000,
       })
       return
@@ -202,7 +222,7 @@ export const useModels = defineStore('models', (store) => {
         const previewFile = await previewUrlToFile(data.preview as string)
         updateData.set('previewFile', previewFile)
       } else {
-        updateData.set('previewFile', 'undefined')
+        updateData.set('previewFile', '')
       }
       needUpdate = true
     }
@@ -233,14 +253,14 @@ export const useModels = defineStore('models', (store) => {
       return
     }
 
-    loading.show()
+    loading.show('updateModel')
     try {
       const response = await request(genModelUrl(model), {
         method: 'PUT',
         body: updateData,
       })
       if (!response.success) {
-        throw new Error(response.error || 'Failed to update model')
+        throw new Error(response.error || t('updateModelFailed'))
       }
       if (oldKey) {
         store.dialog.close({ key: oldKey })
@@ -248,19 +268,19 @@ export const useModels = defineStore('models', (store) => {
       await refreshModels(data.type)
       toast.add({
         severity: 'success',
-        summary: 'Success',
-        detail: `Model ${data.basename} updated`,
+        summary: t('success'),
+        detail: t('modelUpdated', { name: data.basename }),
         life: 2000,
       })
     } catch (error) {
       toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Failed to update model',
+        summary: t('error'),
+        detail: error.message || t('updateModelFailed'),
         life: 5000,
       })
     } finally {
-      loading.hide()
+      loading.hide('updateModel')
     }
   }
 
@@ -268,7 +288,7 @@ export const useModels = defineStore('models', (store) => {
     return new Promise((resolve) => {
       confirm.require({
         message: t('deleteAsk', [t('model').toLowerCase()]),
-        header: 'Danger',
+        header: t('danger'),
         icon: 'pi pi-info-circle',
         rejectProps: {
           label: t('cancel'),
@@ -281,18 +301,18 @@ export const useModels = defineStore('models', (store) => {
         },
         accept: async () => {
           const dialogKey = genModelKey(model)
-          loading.show()
+          loading.show('deleteModel')
           try {
             const response = await request(genModelUrl(model), {
               method: 'DELETE',
             })
             if (!response.success) {
-              throw new Error(response.error || 'Failed to delete model')
+              throw new Error(response.error || t('deleteModelFailed'))
             }
             toast.add({
               severity: 'success',
-              summary: 'Success',
-              detail: `${model.basename} deleted`,
+              summary: t('success'),
+              detail: t('modelDeleted', { name: model.basename }),
               life: 2000,
             })
             store.dialog.close({ key: dialogKey })
@@ -301,13 +321,13 @@ export const useModels = defineStore('models', (store) => {
           } catch (error) {
             toast.add({
               severity: 'error',
-              summary: 'Error',
-              detail: error.message || 'Failed to delete model',
+              summary: t('error'),
+              detail: error.message || t('deleteModelFailed'),
               life: 5000,
             })
             resolve(void 0)
           } finally {
-            loading.hide()
+            loading.hide('deleteModel')
           }
         },
         reject: () => {
@@ -321,12 +341,11 @@ export const useModels = defineStore('models', (store) => {
     const dialogKey = genModelKey(model)
     const filename = model.basename.replace(model.extension || '', '')
 
-    // Prevent duplicate dialogs
     if (store.dialog.isOpen?.({ key: dialogKey })) {
       toast.add({
         severity: 'warn',
-        summary: 'Warning',
-        detail: 'Model details already open',
+        summary: t('warning'),
+        detail: t('modelDetailsOpen'),
         life: 2000,
       })
       return
@@ -355,11 +374,11 @@ export const useModels = defineStore('models', (store) => {
   }
 
   const handleScanComplete = ({ task_id, results }: { task_id: string; results: Model[] }) => {
-    for (const folder in scanTasks) {
+    for (const folder in scanTasks.value) {
       if (scanTasks.value[folder].taskId === task_id) {
         models.value[folder] = results
         scanTasks.value[folder].status = 'completed'
-        loading.hide(folder)
+        loading.hide(`scan-${folder}`)
       }
     }
   }
@@ -371,11 +390,11 @@ export const useModels = defineStore('models', (store) => {
         scanTasks.value[folder].error = error
         toast.add({
           severity: 'error',
-          summary: 'Error',
-          detail: error || 'Model scan failed',
+          summary: t('error'),
+          detail: t('scanFailed', { error: error || 'Unknown', folder }),
           life: 5000,
         })
-        loading.hide(folder)
+        loading.hide(`scan-${folder}`)
       }
     }
   }
@@ -411,9 +430,9 @@ declare module 'hooks/store' {
   }
 }
 
-export const useModelFormData = (getFormData: () => BaseModel) => {
-  const formData = ref<BaseModel>(getFormData())
-  const modelData = ref<BaseModel>(getFormData())
+export const useModelFormData = (getFormData: () => BaseModel | VersionModel) => {
+  const formData = ref<BaseModel | VersionModel>(getFormData())
+  const modelData = ref<BaseModel | VersionModel>(getFormData())
 
   type ResetCallback = () => void
   const resetCallback = ref<ResetCallback[]>([])
@@ -430,14 +449,14 @@ export const useModelFormData = (getFormData: () => BaseModel) => {
     }
   }
 
-  type SubmitCallback = (data: WithResolved<BaseModel>) => void
+  type SubmitCallback = (data: WithResolved<BaseModel | VersionModel>) => void
   const submitCallback = ref<SubmitCallback[]>([])
 
   const registerSubmit = (callback: SubmitCallback) => {
     submitCallback.value.push(callback)
   }
 
-  const submit = (): WithResolved<BaseModel> => {
+  const submit = (): WithResolved<BaseModel | VersionModel> => {
     const data: any = cloneDeep(toRaw(unref(formData)))
     for (const callback of submitCallback.value) {
       callback(data)
@@ -469,6 +488,7 @@ const baseInfoKey = Symbol('baseInfo') as InjectionKey<
 
 export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
   const { formData: model, modelData } = formInstance
+  const { t } = useI18n()
 
   const provideModelFolders = inject(modelFolderProvideKey)
   const modelFolders = computed<ModelFolder>(() => {
@@ -546,7 +566,7 @@ export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
           const modelType = model.value.type
           const pathIndex = model.value.pathIndex ?? 0
           if (!modelType) {
-            return undefined
+            return t('noFolderSelected')
           }
           const folders = modelFolders.value[modelType] ?? []
           return [`${folders[pathIndex] || ''}`, model.value.subFolder]
@@ -560,7 +580,7 @@ export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
       },
       {
         key: 'sizeBytes',
-        formatter: (val) => (val == null ? 'Unknown' : bytesToSize(val)),
+        formatter: (val) => (val == null ? t('unknown') : bytesToSize(val)),
       },
       {
         key: 'createdAt',
@@ -604,7 +624,7 @@ export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
 export const useModelBaseInfo = () => {
   const result = inject(baseInfoKey)
   if (!result) {
-    throw new Error('useModelBaseInfo must be used within a ModelBaseInfoEditor provider')
+    throw new Error(t('baseInfoProviderMissing'))
   }
   return result
 }
@@ -616,7 +636,6 @@ export const useModelFolder = (
   } = {},
 ) => {
   const { data: storeModels, folders: modelFolders } = useModels()
-  const isLoading = ref(false)
 
   const pathOptions = computed(() => {
     const type = toValue(option.type)
@@ -624,7 +643,6 @@ export const useModelFolder = (
       return []
     }
 
-    // Use provided models (e.g., scanModelsList) or store models
     const folderItems = cloneDeep(option.models?.value || storeModels.value[type] || [])
     const pureFolders = folderItems.filter((item) => item.isFolder)
     pureFolders.sort((a, b) => a.basename.localeCompare(b.basename))
@@ -674,33 +692,8 @@ export const useModelFolder = (
     return root
   })
 
-  const handleScanUpdate = ({ file }: { task_id: string; file: Model }) => {
-    if (file.type === toValue(option.type)) {
-      isLoading.value = true
-      setTimeout(() => (isLoading.value = false), 1000) // Debounce UI update
-    }
-  }
-
-  const handleScanComplete = ({ results }: { task_id: string; results: Model[] }) => {
-    if (results.some((m) => m.type === toValue(option.type))) {
-      isLoading.value = true
-      setTimeout(() => (isLoading.value = false), 1000)
-    }
-  }
-
-  onMounted(() => {
-    storeEvent.on('scan:update', handleScanUpdate)
-    storeEvent.on('scan:complete', handleScanComplete)
-  })
-
-  onUnmounted(() => {
-    storeEvent.off('scan:update', handleScanUpdate)
-    storeEvent.off('scan:complete', handleScanComplete)
-  })
-
   return {
     pathOptions,
-    isLoading,
   }
 }
 
@@ -711,37 +704,28 @@ const previewKey = Symbol('preview') as InjectionKey<
   ReturnType<typeof useModelPreviewEditor>
 >
 
+const PREVIEW_TYPE_OPTIONS = ['default', 'network', 'local', 'none'] as const
+
 export const useModelPreviewEditor = (formInstance: ModelFormInstance) => {
   const { formData: model, registerReset, registerSubmit } = formInstance
+  const { t } = useI18n()
 
-  const typeOptions = ref(['default', 'network', 'local', 'none'])
-  const currentType = ref('default')
+  const typeOptions = PREVIEW_TYPE_OPTIONS
+  const currentType = ref<typeof PREVIEW_TYPE_OPTIONS[number]>('default')
 
-  /**
-   * Default images
-   */
   const defaultContent = computed(() => {
     return model.value.preview ? castArray(model.value.preview) : []
   })
   const defaultContentPage = ref(0)
 
-  /**
-   * Network picture url
-   */
   const networkContent = ref<string | null>(null)
 
-  /**
-   * Local file url
-   */
   const localContent = ref<string | null>(null)
   const updateLocalContent = async (event: SelectEvent) => {
     const { files } = event
     localContent.value = files[0].objectURL
   }
 
-  /**
-   * No preview
-   */
   const noPreviewContent = computed(() => {
     const folder = model.value.type || 'unknown'
     return `/model-manager/preview/${folder}/0/no-preview.png`
@@ -821,7 +805,7 @@ export const useModelPreviewEditor = (formInstance: ModelFormInstance) => {
 export const useModelPreview = () => {
   const result = inject(previewKey)
   if (!result) {
-    throw new Error('useModelPreview must be used within a ModelPreviewEditor provider')
+    throw new Error(t('previewProviderMissing'))
   }
   return result
 }
@@ -835,6 +819,7 @@ const descriptionKey = Symbol('description') as InjectionKey<
 
 export const useModelDescriptionEditor = (formInstance: ModelFormInstance) => {
   const { formData: model, metadata } = formInstance
+  const { t } = useI18n()
 
   const md = useMarkdown({ metadata: metadata.value })
 
@@ -861,7 +846,7 @@ export const useModelDescriptionEditor = (formInstance: ModelFormInstance) => {
 export const useModelDescription = () => {
   const result = inject(descriptionKey)
   if (!result) {
-    throw new Error('useModelDescription must be used within a ModelDescriptionEditor provider')
+    throw new Error(t('descriptionProviderMissing'))
   }
   return result
 }
@@ -875,6 +860,7 @@ const metadataKey = Symbol('metadata') as InjectionKey<
 
 export const useModelMetadataEditor = (formInstance: ModelFormInstance) => {
   const { formData: model } = formInstance
+  const { t } = useI18n()
 
   const metadata = computed(() => {
     return model.value.metadata || {}
@@ -890,7 +876,7 @@ export const useModelMetadataEditor = (formInstance: ModelFormInstance) => {
 export const useModelMetadata = () => {
   const result = inject(metadataKey)
   if (!result) {
-    throw new Error('useModelMetadata must be used within a ModelMetadataEditor provider')
+    throw new Error(t('metadataProviderMissing'))
   }
   return result
 }
@@ -945,7 +931,7 @@ export const useModelNodeAction = () => {
     app.canvas.copyToClipboard([node])
     toast.add({
       severity: 'success',
-      summary: 'Success',
+      summary: t('success'),
       detail: t('modelCopied'),
       life: 2000,
     })
@@ -954,7 +940,7 @@ export const useModelNodeAction = () => {
   const loadPreviewWorkflow = wrapperToastError(async (model: BaseModel) => {
     const previewUrl = model.preview as string
     if (!previewUrl) {
-      throw new Error('No preview available')
+      throw new Error(t('noPreviewAvailable'))
     }
     const response = await fetch(previewUrl)
     const data = await response.blob()
