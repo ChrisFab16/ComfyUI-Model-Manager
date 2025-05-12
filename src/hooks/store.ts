@@ -1,21 +1,71 @@
-import { inject, InjectionKey, provide } from 'vue'
+import { inject, InjectionKey, provide, ref, Ref } from 'vue'
+import { useToast } from 'hooks/toast'
+import { Model, DownloadTaskOptions } from 'types/typings'
+import { api } from 'scripts/comfyAPI'
 
-const providerHooks = new Map<string, any>()
-const storeEvent = {} as StoreProvider
-
-export const useStoreProvider = () => {
-  // const storeEvent = {}
-
-  for (const [key, useHook] of providerHooks) {
-    storeEvent[key] = useHook()
+/**
+ * Interface for the store provider, defining available stores and event handling.
+ */
+interface StoreProvider {
+  dialog: {
+    open: (options: {
+      key: string
+      title: string
+      content: any
+      contentProps?: Record<string, any>
+    }) => void
+    close: (options: { key: string }) => void
   }
-
-  return storeEvent
+  models: {
+    update: (model: Model, data: any, formData?: FormData) => Promise<void>
+    remove: (model: Model) => Promise<void>
+    refresh: () => Promise<void>
+  }
+  download: {
+    refresh: () => Promise<void>
+  }
+  emit: (event: string, data: any) => void
+  on: (event: string, callback: (data: any) => void) => void
+  reset: () => void
 }
 
+const providerHooks = new Map<string, () => any>()
+const storeEvent: StoreProvider = {
+  dialog: {
+    open: () => {},
+    close: () => {},
+  },
+  models: {
+    update: async () => {},
+    remove: async () => {},
+    refresh: async () => {},
+  },
+  download: {
+    refresh: async () => {},
+  },
+  emit: (event: string, data: any) => {
+    eventListeners[event]?.forEach((callback) => callback(data))
+  },
+  on: (event: string, callback: (data: any) => void) => {
+    if (!eventListeners[event]) {
+      eventListeners[event] = []
+    }
+    eventListeners[event].push(callback)
+  },
+  reset: () => {
+    for (const key of Object.keys(storeEvent)) {
+      if (key !== 'emit' && key !== 'on' && key !== 'reset') {
+        storeEvent[key] = {} as any
+      }
+    }
+    eventListeners = {}
+  },
+}
+
+const eventListeners: Record<string, ((data: any) => void)[]> = {}
 const storeKeys = new Map<string, symbol>()
 
-const getStoreKey = (key: string) => {
+const getStoreKey = (key: string): symbol => {
   let storeKey = storeKeys.get(key)
   if (!storeKey) {
     storeKey = Symbol(key)
@@ -25,26 +75,115 @@ const getStoreKey = (key: string) => {
 }
 
 /**
- * Using vue provide and inject to implement a simple store
+ * Initializes all registered stores and returns the store provider.
+ * @returns The StoreProvider instance with initialized stores.
  */
-export const defineStore = <T = any>(
+export const useStoreProvider = (): StoreProvider => {
+  const { toast } = useToast()
+
+  for (const [key, useHook] of providerHooks) {
+    try {
+      storeEvent[key] = useHook()
+    } catch (error) {
+      console.error(`[useStoreProvider] Failed to initialize store "${key}":`, error)
+      toast.add({
+        severity: 'error',
+        summary: 'Store Error',
+        detail: `Failed to initialize store "${key}": ${error.message || 'Unknown error'}`,
+        life: 5000,
+      })
+    }
+  }
+
+  // Initialize WebSocket event handlers
+  const handleScanUpdate = (event: CustomEvent<{ task_id: string; file: Model }>) => {
+    storeEvent.emit('scan:update', event.detail)
+  }
+
+  const handleScanComplete = (event: CustomEvent<{ task_id: string; results: Model[] }>) => {
+    storeEvent.emit('scan:complete', event.detail)
+  }
+
+  const handleDownloadUpdate = (event: CustomEvent<{ taskId: string; data: DownloadTaskOptions }>) => {
+    storeEvent.emit('download:update', event.detail)
+  }
+
+  const handleDownloadComplete = (event: CustomEvent<string>) => {
+    storeEvent.emit('download:complete', { taskId: event.detail })
+  }
+
+  api.addEventListener('update_scan_task', handleScanUpdate)
+  api.addEventListener('complete_scan_task', handleScanComplete)
+  api.addEventListener('update_download_task', handleDownloadUpdate)
+  api.addEventListener('complete_download_task', handleDownloadComplete)
+
+  // Clean up WebSocket listeners on provider disposal
+  const dispose = () => {
+    api.removeEventListener('update_scan_task', handleScanUpdate)
+    api.removeEventListener('complete_scan_task', handleScanComplete)
+    api.removeEventListener('update_download_task', handleDownloadUpdate)
+    api.removeEventListener('complete_download_task', handleDownloadComplete)
+  }
+
+  return { ...storeEvent, dispose }
+}
+
+/**
+ * Defines a store with a unique key and initial hook.
+ * @param key The unique store identifier.
+ * @param useInitial The hook to initialize the store.
+ * @returns A function to inject the store instance.
+ */
+export const defineStore = <T>(
   key: string,
   useInitial: (event: StoreProvider) => T,
-) => {
+): (() => T) => {
+  const { toast } = useToast()
   const storeKey = getStoreKey(key) as InjectionKey<T>
 
-  if (providerHooks.has(key) && !import.meta.hot) {
-    console.warn(`[defineStore] key: ${key} already exists.`)
-  } else {
-    providerHooks.set(key, () => {
+  if (providerHooks.has(key)) {
+    const errorMessage = `[defineStore] Store key "${key}" already exists.`
+    console.error(errorMessage)
+    toast.add({
+      severity: 'error',
+      summary: 'Store Error',
+      detail: errorMessage,
+      life: 5000,
+    })
+    throw new Error(errorMessage)
+  }
+
+  providerHooks.set(key, () => {
+    try {
       const result = useInitial(storeEvent)
       provide(storeKey, result ?? storeEvent[key])
       return result
-    })
-  }
+    } catch (error) {
+      console.error(`[defineStore] Failed to initialize store "${key}":`, error)
+      toast.add({
+        severity: 'error',
+        summary: 'Store Error',
+        detail: `Failed to initialize store "${key}": ${error.message || 'Unknown error'}`,
+        life: 5000,
+      })
+      throw error
+    }
+  })
 
-  const useStore = () => {
-    return inject(storeKey)!
+  const useStore = (): T => {
+    const store = inject<T>(storeKey)
+    if (!store) {
+      const errorMessage = `Store "${key}" not found. Ensure it is provided by a parent component.`
+      console.error(errorMessage)
+      toast.add({
+        severity: 'error',
+        summary: 'Store Error',
+        detail: errorMessage,
+        life: 5000,
+      })
+      throw new Error(errorMessage)
+    }
+    return store
   }
 
   return useStore
