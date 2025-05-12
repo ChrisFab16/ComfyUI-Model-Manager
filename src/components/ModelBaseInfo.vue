@@ -1,7 +1,13 @@
 <template>
   <div class="flex flex-col gap-4">
     <div v-if="editable" class="flex flex-col gap-4">
-      <ResponseSelect v-if="!baseInfo.type" v-model="type" :items="typeOptions">
+      <ResponseSelect
+        v-if="!baseInfo.type"
+        v-model="type"
+        :items="typeOptions"
+        :loading="isLoading"
+        :placeholder="$t('selectModelType')"
+      >
         <template #prefix>
           <span>{{ $t('modelType') }}</span>
         </template>
@@ -17,7 +23,8 @@
         </div>
         <Button
           icon="pi pi-folder"
-          :disabled="!type"
+          :disabled="!type || isLoading"
+          :label="$t('selectFolder')"
           @click="handleSelectFolder"
         ></Button>
 
@@ -37,6 +44,7 @@
                   v-model:selection-keys="modelFolder"
                   :value="pathOptions"
                   selectionMode="single"
+                  :loading="isLoading"
                   :pt:nodeLabel:class="'text-ellipsis overflow-hidden'"
                 ></Tree>
               </ResponseScroll>
@@ -49,6 +57,7 @@
               ></Button>
               <Button
                 :label="$t('select')"
+                :disabled="!modelFolder.value || isLoading"
                 @click="handleConfirmSelectFolder"
               ></Button>
             </div>
@@ -56,18 +65,22 @@
         </Dialog>
       </div>
 
-      <ResponseInput
-        v-model.trim.valid="basename"
-        class="-mr-2 text-right"
-        update-trigger="blur"
-        :validate="validateBasename"
-      >
-        <template #suffix>
-          <span class="text-base opacity-60">
-            {{ extension }}
-          </span>
-        </template>
-      </ResponseInput>
+      <div class="flex gap-2">
+        <ResponseInput
+          v-model.trim.valid="basename"
+          class="-mr-2 text-right"
+          update-trigger="blur"
+          :validate="validateBasename"
+          :placeholder="$t('enterModelName')"
+        />
+        <ResponseInput
+          v-model.trim="extension"
+          class="w-32 text-right"
+          update-trigger="blur"
+          :validate="validateExtension"
+          :placeholder="$t('extension')"
+        />
+      </div>
     </div>
 
     <table class="w-full table-fixed border-collapse border">
@@ -92,7 +105,7 @@
               autoHide: false,
               showDelay: 800,
               hideDelay: 300,
-              pt: { root: { style: { zIndex: 2100, maxWidth: '32rem' } } },
+              pt: { root: { style: { zIndex: tooltipZIndex } } },
             }"
           >
             {{ item.display }}
@@ -108,17 +121,21 @@ import ResponseInput from 'components/ResponseInput.vue'
 import ResponseScroll from 'components/ResponseScroll.vue'
 import ResponseSelect from 'components/ResponseSelect.vue'
 import { useDialog } from 'hooks/dialog'
-import { useModelBaseInfo, useModelFolder } from 'hooks/model'
+import { useModelBaseInfo, useModelFolder, useModels } from 'hooks/model'
+import { useStoreProvider } from 'hooks/store'
 import { useToast } from 'hooks/toast'
 import Button from 'primevue/button'
 import { usePrimeVue } from 'primevue/config'
 import Dialog from 'primevue/dialog'
 import Tree from 'primevue/tree'
-import { computed, ref, watch } from 'vue'
+import { SelectOptions } from 'types/typings'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 const editable = defineModel<boolean>('editable')
 
 const { toast } = useToast()
+const { storeEvent } = useStoreProvider()
+const { models } = useModels()
 
 const {
   baseInfo,
@@ -130,48 +147,83 @@ const {
   modelFolders,
 } = useModelBaseInfo()
 
+const isLoading = ref(false)
+
 watch(type, () => {
   subFolder.value = ''
+  pathIndex.value = 0
 })
 
-const typeOptions = computed(() => {
-  return Object.keys(modelFolders.value).map((curr) => {
-    return {
-      value: curr,
-      label: curr,
-      command: () => {
+const typeOptions = computed<SelectOptions[]>(() => {
+  return Object.keys(modelFolders.value).map((curr) => ({
+    value: curr,
+    label: curr,
+    disabled: isLoading.value,
+    command: () => {
+      if (!isLoading.value) {
         type.value = curr
         pathIndex.value = 0
-      },
-    }
-  })
+      }
+    },
+  }))
 })
 
 const information = computed(() => {
   return Object.values(baseInfo.value).filter((row) => {
     if (editable.value) {
-      const hiddenKeys = ['basename', 'pathIndex']
+      const hiddenKeys = ['basename', 'pathIndex', 'extension']
       return !hiddenKeys.includes(row.key)
     }
     return true
   })
 })
 
-const validateBasename = (val: string | undefined) => {
+const validateBasename = (val: string | undefined): boolean => {
   if (!val) {
     toast.add({
       severity: 'error',
-      detail: 'basename is required',
-      life: 3000,
+      summary: 'Validation Error',
+      detail: 'Model name is required',
+      life: 5000,
     })
     return false
   }
-  const invalidChart = /[\\/:*?"<>|]/
-  if (invalidChart.test(val)) {
+  const invalidChars = /[\\/:*?"<>|]/
+  if (invalidChars.test(val)) {
     toast.add({
       severity: 'error',
-      detail: 'basename is invalid, \\/:*?"<>|',
-      life: 3000,
+      summary: 'Validation Error',
+      detail: 'Model name contains invalid characters: \\ / : * ? " < > |',
+      life: 5000,
+    })
+    return false
+  }
+  const existingModel = models.value[type.value]?.find(
+    (m) => m.basename === val && m.subFolder === subFolder.value && m.extension === extension.value
+  )
+  if (existingModel) {
+    toast.add({
+      severity: 'error',
+      summary: 'Validation Error',
+      detail: 'A model with this name already exists in the selected folder',
+      life: 5000,
+    })
+    return false
+  }
+  return true
+}
+
+const validateExtension = (val: string | undefined): boolean => {
+  if (!val) {
+    return true // Extension is optional
+  }
+  const validExtensions = ['.safetensors', '.ckpt', '.pt', '.bin', '.pth']
+  if (!validExtensions.includes(val.toLowerCase())) {
+    toast.add({
+      severity: 'error',
+      summary: 'Validation Error',
+      detail: 'Invalid extension. Allowed: .safetensors, .ckpt, .pt, .bin, .pth',
+      life: 5000,
     })
     return false
   }
@@ -184,7 +236,11 @@ const { stack } = useDialog()
 const { config } = usePrimeVue()
 const zIndex = computed(() => {
   const baseZIndex = config.zIndex?.modal ?? 1100
-  return baseZIndex + stack.value.length + 1
+  return baseZIndex + stack.value.length * 10 + 10
+})
+
+const tooltipZIndex = computed(() => {
+  return zIndex.value + 100
 })
 
 const handleSelectFolder = () => {
@@ -192,7 +248,7 @@ const handleSelectFolder = () => {
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Please select model type first',
+      detail: 'Please select a model type first',
       life: 5000,
     })
     return
@@ -206,9 +262,9 @@ const selectedModelFolder = ref<string>()
 
 const modelFolder = computed({
   get: () => {
-    const folderPath = baseInfo.value.pathIndex.display
+    const folderPath = baseInfo.value.pathIndex?.display || ''
     const selectedKey = selectedModelFolder.value ?? folderPath
-    return { [selectedKey]: true }
+    return selectedKey ? { [selectedKey]: true } : {}
   },
   set: (val) => {
     const folderPath = Object.keys(val)[0]
@@ -217,7 +273,31 @@ const modelFolder = computed({
 })
 
 const renderedModelFolder = computed(() => {
-  return baseInfo.value.pathIndex?.display
+  const display = baseInfo.value.pathIndex?.display || ''
+  return display || $t('noFolderSelected')
+})
+
+// WebSocket scan updates
+const handleScanUpdate = ({ file }: { task_id: string; file: Model }) => {
+  if (file.type === type.value) {
+    isLoading.value = true
+    setTimeout(() => (isLoading.value = false), 1000) // Debounce UI update
+  }
+}
+
+const handleScanComplete = ({ results }: { task_id: string; results: Model[] }) => {
+  if (results.some((m) => m.type === type.value)) {
+    isLoading.value = true
+    storeEvent.models.refresh().finally(() => (isLoading.value = false))
+  }
+}
+
+storeEvent.on('scan:update', handleScanUpdate)
+storeEvent.on('scan:complete', handleScanComplete)
+
+onUnmounted(() => {
+  storeEvent.off('scan:update', handleScanUpdate)
+  storeEvent.off('scan:complete', handleScanComplete)
 })
 
 const handleCancelSelectFolder = () => {
@@ -227,22 +307,32 @@ const handleCancelSelectFolder = () => {
 
 const handleConfirmSelectFolder = () => {
   const folderPath = Object.keys(modelFolder.value)[0]
-
-  const folders = modelFolders.value[type.value]
-  pathIndex.value = folders.findIndex((item) => folderPath.includes(item))
-  if (pathIndex.value < 0) {
+  if (!folderPath) {
     toast.add({
       severity: 'error',
-      detail: 'Folder not found',
-      life: 3000,
+      summary: 'Error',
+      detail: 'No folder selected',
+      life: 5000,
     })
     return
   }
-  const prefixPath = folders[pathIndex.value]
-  subFolder.value = folderPath.replace(prefixPath, '')
-  if (subFolder.value.startsWith('/')) {
-    subFolder.value = subFolder.value.replace('/', '')
+
+  const folders = modelFolders.value[type.value] || []
+  const index = folders.findIndex((item) => folderPath.includes(item))
+  if (index < 0) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Selected folder is not valid for this model type',
+      life: 5000,
+    })
+    return
   }
+
+  pathIndex.value = index
+  const prefixPath = folders[index]
+  const subFolderPath = folderPath.replace(prefixPath, '').replace(/^\/+|\/+$/g, '')
+  subFolder.value = subFolderPath || ''
 
   selectedModelFolder.value = undefined
   folderSelectVisible.value = false
