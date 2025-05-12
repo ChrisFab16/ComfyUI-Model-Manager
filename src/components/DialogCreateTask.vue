@@ -22,7 +22,7 @@
         :type="isMobile ? 'drop' : 'button'"
       >
         <template #prefix>
-          <span>version:</span>
+          <span>{{ $t('version') }}:</span>
         </template>
       </ResponseSelect>
     </div>
@@ -35,6 +35,7 @@
             :key="currentModel.id"
             :model="currentModel"
             :editable="true"
+            :is-task-creation="true"
             @submit="createDownTask"
           >
             <template #action>
@@ -68,18 +69,20 @@ import { useConfig } from 'hooks/config'
 import { useDialog } from 'hooks/dialog'
 import { useModelSearch } from 'hooks/download'
 import { useLoading } from 'hooks/loading'
-import { genModelFullName } from 'hooks/model'
+import { useModels } from 'hooks/model'
 import { request } from 'hooks/request'
 import { useToast } from 'hooks/toast'
 import Button from 'primevue/button'
 import { VersionModel, WithResolved } from 'types/typings'
-import { previewUrlToFile } from 'utils/common'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const { isMobile } = useConfig()
 const { toast } = useToast()
+const { t } = useI18n()
 const loading = useLoading()
 const dialog = useDialog()
+const { data: models } = useModels()
 
 const modelUrl = ref<string>()
 const isSearching = ref(false)
@@ -91,25 +94,34 @@ const canSubmit = computed(() => {
     currentModel.value &&
     currentModel.value.type &&
     currentModel.value.pathIndex !== undefined &&
+    currentModel.value.basename &&
     currentModel.value.downloadUrl &&
-    currentModel.value.downloadPlatform
+    currentModel.value.downloadPlatform &&
+    !models.value[currentModel.value.type]?.find(
+      (m) =>
+        m.basename === currentModel.value.basename &&
+        m.subFolder === currentModel.value.subFolder &&
+        m.extension === currentModel.value.extension
+    )
   )
 })
 
 const searchModelsByUrl = async () => {
   if (!modelUrl.value || isSearching.value) return
   isSearching.value = true
+  loading.show('searchModels')
   try {
     await search(modelUrl.value)
   } catch (error) {
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: error.message || 'Failed to search models',
+      summary: t('error'),
+      detail: error.message || t('searchModelsFailed'),
       life: 5000,
     })
   } finally {
     isSearching.value = false
+    loading.hide('searchModels')
   }
 }
 
@@ -117,72 +129,61 @@ const createDownTask = async (data: WithResolved<VersionModel>) => {
   if (!canSubmit.value) {
     toast.add({
       severity: 'warn',
-      summary: 'Invalid Input',
-      detail: 'Please provide all required fields: type, path index, download URL, and platform',
+      summary: t('validationError'),
+      detail: t('requiredFieldsMissing'),
       life: 5000,
     })
     return
   }
 
-  loading.show()
-  const formData = new FormData()
-
+  loading.show('createTask')
   try {
-    // Required fields
-    formData.append('type', data.type || '')
-    formData.append('pathIndex', String(data.pathIndex || 0))
-    formData.append('downloadPlatform', data.downloadPlatform || '')
-    formData.append('downloadUrl', data.downloadUrl || '')
-    formData.append('sizeBytes', String(data.sizeBytes || 0))
-
-    // Optional fields
+    const formData = new FormData()
+    formData.append('type', data.type)
+    formData.append('pathIndex', String(data.pathIndex))
+    formData.append('fullname', data.fullname)
+    formData.append('extension', data.extension || '')
+    formData.append('downloadPlatform', data.downloadPlatform)
+    formData.append('downloadUrl', data.downloadUrl)
+    if (data.sizeBytes) {
+      formData.append('sizeBytes', String(data.sizeBytes))
+    }
     if (data.description) {
       formData.append('description', data.description)
     }
     if (data.hashes) {
       formData.append('hashes', JSON.stringify(data.hashes))
     }
-
-    // Compute fullname
-    const fullname = genModelFullName(data as VersionModel)
-    if (!fullname) {
-      throw new Error('Failed to generate model fullname')
-    }
-    formData.append('fullname', fullname)
-
-    // Handle preview file
     if (data.preview) {
-      const previewFile = await previewUrlToFile(data.preview)
+      const previewFile = await previewUrlToFile(data.preview as string)
       formData.append('previewFile', previewFile)
-    } else {
-      formData.append('previewFile', '')
     }
 
-    const response = await request('/model-manager/model', {
+    const response = await request('/model-manager/download', {
       method: 'POST',
       body: formData,
     })
 
     if (!response.success) {
-      throw new Error(response.error || 'Failed to create download task')
+      throw new Error(response.error || t('createTaskFailed'))
     }
 
     dialog.close()
     toast.add({
       severity: 'success',
-      summary: 'Success',
-      detail: 'Download task created successfully',
+      summary: t('success'),
+      detail: t('taskCreated', { name: data.basename }),
       life: 3000,
     })
   } catch (error) {
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: error.message || 'Failed to create download task',
+      summary: t('error'),
+      detail: error.message || t('createTaskFailed'),
       life: 5000,
     })
   } finally {
-    loading.hide()
+    loading.hide('createTask')
   }
 }
 </script>
