@@ -1,16 +1,17 @@
 import os
 import folder_paths
-from aiohttp import web
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-
+from aiohttp import web
 from . import utils
 
-
 class ModelManager:
+    def __init__(self):
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.lock = threading.Lock()
+        self.running_tasks = {}  # task_id -> {status, results, error}
 
     def add_routes(self, routes):
-
         @routes.get("/model-manager/base-folders")
         @utils.deprecated(reason="Use `/model-manager/models` instead.")
         async def get_model_paths(request):
@@ -33,8 +34,51 @@ class ModelManager:
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
+        @routes.get("/model-manager/scan/start")
+        async def start_scan(request):
+            """
+            Starts a model scan in the background and returns a task ID.
+            """
+            folder = request.query.get("folder", None)
+            if not folder:
+                return web.json_response({"success": False, "error": "Folder parameter is required"})
+            
+            task_id = f"scan_{folder}_{id(request)}"
+            with self.lock:
+                if task_id in self.running_tasks:
+                    return web.json_response({"success": True, "task_id": task_id, "status": "running"})
+
+                self.running_tasks[task_id] = {"status": "running", "results": [], "error": None}
+
+            def scan_task():
+                try:
+                    results = self.scan_models(folder, request)
+                    with self.lock:
+                        self.running_tasks[task_id]["results"] = results
+                        self.running_tasks[task_id]["status"] = "completed"
+                except Exception as e:
+                    with self.lock:
+                        self.running_tasks[task_id]["status"] = "failed"
+                        self.running_tasks[task_id]["error"] = str(e)
+
+            self.executor.submit(scan_task)
+            return web.json_response({"success": True, "task_id": task_id, "status": "started"})
+
+        @routes.get("/model-manager/scan/status/{task_id}")
+        async def get_scan_status(request):
+            """
+            Returns the status and partial results of a scan task.
+            """
+            task_id = request.match_info.get("task_id", None)
+            with self.lock:
+                task = self.running_tasks.get(task_id, {"status": "not_found", "results": [], "error": None})
+            return web.json_response({"success": True, "status": task["status"], "data": task["results"], "error": task["error"]})
+
         @routes.get("/model-manager/models/{folder}")
         async def get_folder_models(request):
+            """
+            Returns models in a folder (synchronous, kept for compatibility).
+            """
             try:
                 folder = request.match_info.get("folder", None)
                 results = self.scan_models(folder, request)
@@ -90,6 +134,7 @@ class ModelManager:
                 return web.json_response({"success": True})
             except Exception as e:
                 error_msg = f"Update model failed: {str(e)}"
+               就是在
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
@@ -115,7 +160,6 @@ class ModelManager:
 
     def scan_models(self, folder: str, request):
         result = []
-
         include_hidden_files = utils.get_setting_value(request, "scan.include_hidden_files", False)
         folders, *others = folder_paths.folder_names_and_paths[folder]
 
@@ -180,66 +224,64 @@ class ModelManager:
             if not os.path.exists(base_path):
                 continue
             file_entries = get_all_files_entry(base_path)
-            with ThreadPoolExecutor() as executor:
-                futures = {executor.submit(get_file_info, entry, base_path, path_index): entry for entry in file_entries}
-                for future in as_completed(futures):
-                    file_info = future.result()
-                    if file_info is None:
-                        continue
-                    result.append(file_info)
+            batch_size = 100  # Process files in batches for incremental updates
+            for i in range(0, len(file_entries), batch_size):
+                batch = file_entries[i:i + batch_size]
+                with ThreadPoolExecutor() as executor:
+                    futures = {executor.submit(get_file_info, entry, base_path, path_index): entry for entry in batch}
+                    for future in as_completed(futures):
+                        file_info = future.result()
+                        if file_info is None:
+                            continue
+                        result.append(file_info)
+                        # Incremental update for running tasks
+                        with self.lock:
+                            task_id = f"scan_{folder}_"
+                            for tid in self.running_tasks:
+                                if tid.startswith(task_id):
+                                    self.running_tasks[tid]["results"].append(file_info)
 
         return result
 
     def get_model_info(self, model_path: str):
         directory = os.path.dirname(model_path)
-
         metadata = utils.get_model_metadata(model_path)
-
         description_file = utils.get_model_description_name(model_path)
         description_file = utils.join_path(directory, description_file)
         description = None
         if os.path.isfile(description_file):
             with open(description_file, "r", encoding="utf-8", newline="") as f:
                 description = f.read()
-
         return {
             "metadata": metadata,
             "description": description,
         }
 
     def update_model(self, model_path: str, model_data: dict):
-
         if "previewFile" in model_data:
             previewFile = model_data["previewFile"]
-            if type(previewFile) is str and previewFile == "undefined":
+            if isinstance(previewFile, str) and previewFile == "undefined":
                 utils.remove_model_preview_image(model_path)
             else:
                 utils.save_model_preview_image(model_path, previewFile)
-
         if "description" in model_data:
             description = model_data["description"]
             utils.save_model_description(model_path, description)
-
         if "type" in model_data and "pathIndex" in model_data and "fullname" in model_data:
             model_type = model_data.get("type", None)
             path_index = int(model_data.get("pathIndex", None))
             fullname = model_data.get("fullname", None)
             if model_type is None or path_index is None or fullname is None:
                 raise RuntimeError("Invalid type or pathIndex or fullname")
-
-            # get new path
             new_model_path = utils.get_full_path(model_type, path_index, fullname)
-
             utils.rename_model(model_path, new_model_path)
 
     def remove_model(self, model_path: str):
         model_dirname = os.path.dirname(model_path)
         os.remove(model_path)
-
         model_previews = utils.get_model_all_images(model_path)
         for preview in model_previews:
             os.remove(utils.join_path(model_dirname, preview))
-
         model_descriptions = utils.get_model_all_descriptions(model_path)
         for description in model_descriptions:
             os.remove(utils.join_path(model_dirname, description))
