@@ -2,35 +2,37 @@ export type ContainerSize = { width: number; height: number }
 export type ContainerPosition = { left: number; top: number }
 
 export interface BaseModel {
-  id: number | string
+  id: string
   basename: string
-  extension: string
-  sizeBytes: number
+  extension?: string | null
+  sizeBytes?: number
   type: string
-  subFolder: string
+  subFolder?: string | null
   pathIndex: number
   isFolder: boolean
-  preview: string | string[]
-  previewType: string
-  description: string
-  metadata: Record<string, string>
+  preview?: string | null
+  previewType?: string | null
+  description?: string | null
+  metadata?: Record<string, string> | null
+  downloadUrl?: string | null // For VersionModel compatibility
+  downloadPlatform?: string | null // For VersionModel compatibility
 }
 
 export interface Model extends BaseModel {
-  createdAt: number
-  updatedAt: number
-  children?: Model[]
+  createdAt?: string | null
+  updatedAt?: string | null
+  children?: Model[] | null // Only for isFolder: true
 }
 
 export interface VersionModel extends BaseModel {
-  shortname: string
-  downloadPlatform: string
-  downloadUrl: string
-  hashes?: Record<string, string>
+  shortname?: string | null // Deprecated or optional
+  downloadUrl?: string | null
+  downloadPlatform?: string | null
+  hashes?: Record<string, string> | null
 }
 
 export type WithResolved<T> = Omit<T, 'preview'> & {
-  preview: string | undefined
+  preview: string | null
 }
 
 export type PassThrough<T = void> = T | object | undefined
@@ -55,13 +57,15 @@ export interface DownloadTaskOptions {
   taskId: string
   type: string
   fullname: string
-  preview: string
-  status: 'pause' | 'waiting' | 'doing'
+  preview?: string | null
+  status: 'pause' | 'waiting' | 'doing' | 'completed' | 'failed'
   progress: number
   downloadedSize: number
   totalSize: number
   bps: number
-  error?: string
+  error?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 export interface DownloadTask
@@ -69,11 +73,13 @@ export interface DownloadTask
     DownloadTaskOptions,
     'downloadedSize' | 'totalSize' | 'bps' | 'error'
   > {
+  /** Formatted progress (e.g., "1.2 MB / 10 MB") */
   downloadProgress: string
+  /** Formatted speed (e.g., "500 KB/s") */
   downloadSpeed: string
-  pauseTask: () => void
-  resumeTask: () => void
-  deleteTask: () => void
+  pauseTask: () => Promise<void>
+  resumeTask: () => Promise<void>
+  deleteTask: () => Promise<void>
 }
 
-export type CustomEventListener = (event: CustomEvent) => void
+export type CustomEventListener<T = any> = (event: CustomEvent<T>) => void
