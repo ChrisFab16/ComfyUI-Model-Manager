@@ -14,28 +14,43 @@
         <ModelPreview
           class="shrink-0"
           v-model:editable="editable"
-        ></ModelPreview>
+        />
 
         <div class="flex flex-col gap-4 overflow-hidden">
           <div class="flex items-center justify-end gap-4">
-            <slot name="action" :metadata="formInstance.metadata.value"></slot>
+            <slot name="action" :metadata="formInstance.metadata.value">
+              <Button
+                type="reset"
+                :label="$t('reset')"
+                severity="secondary"
+                icon="pi pi-undo"
+                :disabled="isLoading || !isDirty"
+              />
+              <Button
+                type="submit"
+                :label="$t('save')"
+                icon="pi pi-save"
+                :disabled="isLoading || !isDirty"
+                :loading="isLoading"
+              />
+            </slot>
           </div>
 
-          <ModelBaseInfo v-model:editable="editable"></ModelBaseInfo>
+          <ModelBaseInfo v-model:editable="editable" />
         </div>
       </div>
 
       <Tabs value="0" class="mt-4">
         <TabList>
-          <Tab value="0">Description</Tab>
-          <Tab value="1">Metadata</Tab>
+          <Tab value="0">{{ $t('description') }}</Tab>
+          <Tab value="1">{{ $t('metadata') }}</Tab>
         </TabList>
         <TabPanels pt:root:class="p-0 py-4">
           <TabPanel value="0">
-            <ModelDescription v-model:editable="editable"></ModelDescription>
+            <ModelDescription v-model:editable="editable" />
           </TabPanel>
           <TabPanel value="1">
-            <ModelMetadata></ModelMetadata>
+            <ModelMetadata />
           </TabPanel>
         </TabPanels>
       </Tabs>
@@ -58,7 +73,9 @@ import {
   useModels,
 } from 'hooks/model'
 import { useToast } from 'hooks/toast'
+import { useLoading } from 'hooks/loading'
 import { cloneDeep } from 'lodash'
+import Button from 'primevue/button'
 import Tab from 'primevue/tab'
 import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
@@ -67,31 +84,28 @@ import Tabs from 'primevue/tabs'
 import { BaseModel, VersionModel, WithResolved } from 'types/typings'
 import { previewUrlToFile } from 'utils/common'
 import { computed, ref, toRaw, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   model: BaseModel | VersionModel
-  isTaskCreation?: boolean // Flag for DialogCreateTask.vue
+  isTaskCreation?: boolean
 }
 
 const props = defineProps<Props>()
 const editable = defineModel<boolean>('editable')
-
-const emits = defineEmits<{
-  submit: [formData: WithResolved<BaseModel>, formDataObj: FormData]
-  reset: []
-}>()
-
+const { t } = useI18n()
 const { toast, confirm } = useToast()
+const loading = useLoading()
 const { folders } = useModels()
 const formInstance = useModelFormData(() => cloneDeep(toRaw(props.model)))
 const isDirty = ref(false)
+const isLoading = ref(false)
 
 useModelBaseInfoEditor(formInstance)
 useModelPreviewEditor(formInstance)
 useModelDescriptionEditor(formInstance)
 useModelMetadataEditor(formInstance)
 
-// Track form dirtiness
 watch(
   () => formInstance.formData.value,
   () => {
@@ -100,35 +114,40 @@ watch(
   { deep: true },
 )
 
-// Validate form data
-const validateForm = (data: WithResolved<BaseModel>): string[] => {
+const validateForm = (data: WithResolved<BaseModel | VersionModel>): string[] => {
   const errors: string[] = []
+  const invalidChars = /[\\/:*?"<>|]/
 
   if (!data.basename) {
-    errors.push('Model name is required')
+    errors.push(t('modelNameRequired'))
+  } else if (invalidChars.test(data.basename)) {
+    errors.push(t('modelNameInvalid'))
   }
   if (!data.type) {
-    errors.push('Model type is required')
+    errors.push(t('modelTypeRequired'))
   } else if (!(data.type in folders.value)) {
-    errors.push(`Invalid model type: ${data.type}`)
+    errors.push(t('modelTypeInvalid', { type: data.type }))
   }
-  if (data.pathIndex == null || data.pathIndex < 0 || data.pathIndex >= (folders.value[data.type]?.length || 0)) {
-    errors.push('Invalid path index')
+  if (data.pathIndex == null || data.pathIndex < 0 || !folders.value[data.type]?.[data.pathIndex]) {
+    errors.push(t('pathIndexInvalid'))
+  }
+  if (data.subFolder && invalidChars.test(data.subFolder)) {
+    errors.push(t('subFolderInvalid'))
   }
   if (props.isTaskCreation) {
-    if (!(data as VersionModel).downloadUrl) {
-      errors.push('Download URL is required for task creation')
+    const versionModel = data as VersionModel
+    if (!versionModel.downloadUrl) {
+      errors.push(t('downloadUrlRequired'))
     }
-    if (!(data as VersionModel).downloadPlatform) {
-      errors.push('Download platform is required for task creation')
+    if (!versionModel.downloadPlatform) {
+      errors.push(t('downloadPlatformRequired'))
     }
   }
 
   return errors
 }
 
-// Generate FormData for submission
-const createFormData = async (data: WithResolved<BaseModel>): Promise<FormData> => {
+const createFormData = async (data: WithResolved<BaseModel | VersionModel>): Promise<FormData> => {
   const formData = new FormData()
   formData.append('type', data.type || '')
   formData.append('pathIndex', String(data.pathIndex || 0))
@@ -146,7 +165,7 @@ const createFormData = async (data: WithResolved<BaseModel>): Promise<FormData> 
       const previewFile = await previewUrlToFile(data.preview, data.basename)
       formData.append('previewFile', previewFile)
     } catch (error) {
-      throw new Error('Failed to process preview image')
+      throw new Error(t('previewProcessingFailed'))
     }
   } else {
     formData.append('previewFile', '')
@@ -158,21 +177,27 @@ const createFormData = async (data: WithResolved<BaseModel>): Promise<FormData> 
 const handleReset = () => {
   if (isDirty.value) {
     confirm.require({
-      message: 'Are you sure you want to reset the form? All changes will be lost.',
-      header: 'Confirm Reset',
+      message: t('confirmResetMessage'),
+      header: t('confirmReset'),
       icon: 'pi pi-info-circle',
       rejectProps: {
-        label: 'Cancel',
+        label: t('cancel'),
         severity: 'secondary',
         outlined: true,
       },
       acceptProps: {
-        label: 'Reset',
+        label: t('reset'),
         severity: 'danger',
       },
       accept: () => {
         formInstance.reset()
         isDirty.value = false
+        toast.add({
+          severity: 'info',
+          summary: t('reset'),
+          detail: t('formReset'),
+          life: 2000,
+        })
         emits('reset')
       },
       reject: () => {},
@@ -185,6 +210,8 @@ const handleReset = () => {
 }
 
 const handleSubmit = async () => {
+  if (isLoading.value) return
+
   const data = formInstance.submit()
   const errors = validateForm(data)
 
@@ -192,7 +219,7 @@ const handleSubmit = async () => {
     errors.forEach((error) => {
       toast.add({
         severity: 'error',
-        summary: 'Validation Error',
+        summary: t('validationError'),
         detail: error,
         life: 5000,
       })
@@ -200,17 +227,28 @@ const handleSubmit = async () => {
     return
   }
 
+  isLoading.value = true
+  loading.show('formSubmit')
   try {
     const formData = await createFormData(data)
     emits('submit', data, formData)
     isDirty.value = false
+    toast.add({
+      severity: 'success',
+      summary: t('success'),
+      detail: props.isTaskCreation ? t('taskCreated') : t('modelUpdated'),
+      life: 2000,
+    })
   } catch (error) {
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: error.message || 'Failed to process form data',
+      summary: t('error'),
+      detail: error.message || t('formProcessingFailed'),
       life: 5000,
     })
+  } finally {
+    isLoading.value = false
+    loading.hide('formSubmit')
   }
 }
 
@@ -219,16 +257,16 @@ watch(
   () => {
     if (isDirty.value) {
       confirm.require({
-        message: 'You have unsaved changes. Reset the form to load the new model?',
-        header: 'Confirm Reset',
+        message: t('unsavedChangesMessage'),
+        header: t('confirmReset'),
         icon: 'pi pi-info-circle',
         rejectProps: {
-          label: 'Cancel',
+          label: t('cancel'),
           severity: 'secondary',
           outlined: true,
         },
         acceptProps: {
-          label: 'Reset',
+          label: t('reset'),
           severity: 'danger',
         },
         accept: () => {
