@@ -50,18 +50,20 @@ class ModelManager:
 
                 self.running_tasks[task_id] = {"status": "running", "results": [], "error": None}
 
-            def scan_task():
+            async def scan_task():
                 try:
-                    results = self.scan_models(folder, request)
+                    results = await self.scan_models(folder, request, task_id)
                     with self.lock:
                         self.running_tasks[task_id]["results"] = results
                         self.running_tasks[task_id]["status"] = "completed"
+                        await utils.send_json("complete_scan_task", {"task_id": task_id, "results": results})
                 except Exception as e:
                     with self.lock:
-                        self.running_tasks[task_id]["status"] = "failed"
+                        self.running_tasks(task_id]["status"] = "failed"
                         self.running_tasks[task_id]["error"] = str(e)
+                        await utils.send_json("error_scan_task", {"task_id": task_id, "error": str(e)})
 
-            self.executor.submit(scan_task)
+            self.executor.submit(lambda: self.loop.run_until_complete(scan_task()))
             return web.json_response({"success": True, "task_id": task_id, "status": "started"})
 
         @routes.get("/model-manager/scan/status/{task_id}")
@@ -81,7 +83,7 @@ class ModelManager:
             """
             try:
                 folder = request.match_info.get("folder", None)
-                results = self.scan_models(folder, request)
+                results = await self.scan_models(folder, request)
                 return web.json_response({"success": True, "data": results})
             except Exception as e:
                 error_msg = f"Read models failed: {str(e)}"
@@ -134,7 +136,6 @@ class ModelManager:
                 return web.json_response({"success": True})
             except Exception as e:
                 error_msg = f"Update model failed: {str(e)}"
-               就是在
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
@@ -158,18 +159,19 @@ class ModelManager:
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
-    def scan_models(self, folder: str, request):
+    async def scan_models(self, folder: str, request, task_id: str = None):
         result = []
         include_hidden_files = utils.get_setting_value(request, "scan.include_hidden_files", False)
         folders, *others = folder_paths.folder_names_and_paths[folder]
 
-        def get_file_info(entry: os.DirEntry[str], base_path: str, path_index: int):
+        def get_file_info(entry: str, base_path: str, path_index: int):
             prefix_path = utils.normalize_path(base_path)
             if not prefix_path.endswith("/"):
                 prefix_path = f"{prefix_path}/"
 
-            is_file = entry.is_file()
-            relative_path = utils.normalize_path(entry.path).replace(prefix_path, "")
+            full_path = os.path.join(base_path, entry)
+            is_file = os.path.isfile(full_path)
+            relative_path = utils.normalize_path(full_path).replace(prefix_path, "")
             sub_folder = os.path.dirname(relative_path)
             filename = os.path.basename(relative_path)
             basename = os.path.splitext(filename)[0] if is_file else filename
@@ -180,19 +182,19 @@ class ModelManager:
 
             preview_type = "image"
             preview_ext = ".webp"
-            preview_images = utils.get_model_all_images(entry.path)
+            preview_images = utils.get_model_all_images(full_path)
             if len(preview_images) > 0:
                 preview_type = "image"
                 preview_ext = ".webp"
             else:
-                preview_videos = utils.get_model_all_videos(entry.path)
+                preview_videos = utils.get_model_all_videos(full_path)
                 if len(preview_videos) > 0:
                     preview_type = "video"
                     preview_ext = f".{preview_videos[0].split('.')[-1]}"
 
             model_preview = f"/model-manager/preview/{folder}/{path_index}/{relative_path.replace(extension, preview_ext)}"
 
-            stat = entry.stat()
+            stat = os.stat(full_path)
             return {
                 "type": folder,
                 "subFolder": sub_folder,
@@ -207,39 +209,25 @@ class ModelManager:
                 "updatedAt": round(stat.st_mtime_ns / 1000000),
             }
 
-        def get_all_files_entry(directory: str):
-            entries: list[os.DirEntry[str]] = []
-            with os.scandir(directory) as it:
-                for entry in it:
-                    # Skip hidden files
-                    if not include_hidden_files:
-                        if entry.name.startswith("."):
-                            continue
-                    entries.append(entry)
-                    if entry.is_dir():
-                        entries.extend(get_all_files_entry(entry.path))
-            return entries
-
         for path_index, base_path in enumerate(folders):
             if not os.path.exists(base_path):
                 continue
-            file_entries = get_all_files_entry(base_path)
-            batch_size = 100  # Process files in batches for incremental updates
-            for i in range(0, len(file_entries), batch_size):
-                batch = file_entries[i:i + batch_size]
-                with ThreadPoolExecutor() as executor:
-                    futures = {executor.submit(get_file_info, entry, base_path, path_index): entry for entry in batch}
-                    for future in as_completed(futures):
-                        file_info = future.result()
-                        if file_info is None:
-                            continue
-                        result.append(file_info)
-                        # Incremental update for running tasks
+            async def progress_callback(file_path: str):
+                if task_id:
+                    file_info = get_file_info(file_path, base_path, path_index)
+                    if file_info:
                         with self.lock:
-                            task_id = f"scan_{folder}_"
-                            for tid in self.running_tasks:
-                                if tid.startswith(task_id):
-                                    self.running_tasks[tid]["results"].append(file_info)
+                            self.running_tasks[task_id]["results"].append(file_info)
+                            await utils.send_json("update_scan_task", {"task_id": task_id, "file": file_info})
+
+            file_entries = await utils.recursive_search_files(base_path, request, progress_callback if task_id else None)
+            with ThreadPoolExecutor() as executor:
+                futures = {executor.submit(get_file_info, entry, base_path, path_index): entry for entry in file_entries}
+                for future in as_completed(futures):
+                    file_info = future.result()
+                    if file_info is None:
+                        continue
+                    result.append(file_info)
 
         return result
 
