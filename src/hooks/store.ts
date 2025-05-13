@@ -4,6 +4,30 @@ import { Model, DownloadTaskOptions } from 'types/typings';
 import { api } from 'scripts/comfyAPI';
 
 /**
+ * Interface for event payloads
+ */
+interface DownloadUpdatePayload {
+  taskId: string;
+  data: DownloadTaskOptions;
+}
+interface DownloadCompletePayload {
+  taskId: string;
+}
+interface ScanUpdatePayload {
+  task_id: string;
+  file: Model;
+}
+interface ScanCompletePayload {
+  task_id: string;
+  results: Model[];
+}
+type EventPayloads =
+  | { 'download:update': DownloadUpdatePayload }
+  | { 'download:complete': DownloadCompletePayload }
+  | { 'scan:update': ScanUpdatePayload }
+  | { 'scan:complete': ScanCompletePayload };
+
+/**
  * Interface for the store provider, defining available stores and event handling.
  */
 interface StoreProvider {
@@ -24,14 +48,15 @@ interface StoreProvider {
   download: {
     refresh: () => Promise<void>;
   };
-  emit: (event: string, data: any) => void;
-  on: (event: string, callback: (data: any) => void) => void;
+  emit: <K extends keyof EventPayloads>(event: K, data: EventPayloads[K]) => void;
+  on: <K extends keyof EventPayloads>(event: K, callback: (data: EventPayloads[K]) => void) => void;
+  off: <K extends keyof EventPayloads>(event: K, callback: (data: EventPayloads[K]) => void) => void;
   reset: () => void;
   dispose?: () => void;
 }
 
 const providerHooks = new Map<string, () => any>();
-let eventListeners: Record<string, ((data: any) => void)[]> = {}; // Changed to `let` for mutability
+let eventListeners: Record<string, ((data: any) => void)[]> = {};
 
 const storeEvent: StoreProvider = {
   dialog: {
@@ -55,15 +80,23 @@ const storeEvent: StoreProvider = {
     }
     eventListeners[event].push(callback);
   },
-  reset: () => {
-    // Clear event listeners
-    eventListeners = {};
-    // Reset stores, preserving emit, on, and reset
-    for (const key of Object.keys(storeEvent)) {
-      if (key !== 'emit' && key !== 'on' && key !== 'reset' && key !== 'dispose') {
-        storeEvent[key] = {} as any; // Consider initializing with default values if needed
+  off: (event: string, callback: (data: any) => void) => {
+    if (eventListeners[event]) {
+      eventListeners[event] = eventListeners[event].filter((cb) => cb !== callback);
+      if (eventListeners[event].length === 0) {
+        delete eventListeners[event];
       }
     }
+  },
+  reset: () => {
+    eventListeners = {};
+    storeEvent.dialog = { open: () => {}, close: () => {} };
+    storeEvent.models = {
+      update: async () => {},
+      remove: async () => {},
+      refresh: async () => {},
+    };
+    storeEvent.download = { refresh: async () => {} };
   },
 };
 
@@ -100,15 +133,15 @@ export const useStoreProvider = (): StoreProvider => {
   }
 
   // Initialize WebSocket event handlers
-  const handleScanUpdate = (event: CustomEvent<{ task_id: string; file: Model }>) => {
+  const handleScanUpdate = (event: CustomEvent<ScanUpdatePayload>) => {
     storeEvent.emit('scan:update', event.detail);
   };
 
-  const handleScanComplete = (event: CustomEvent<{ task_id: string; results: Model[] }>) => {
+  const handleScanComplete = (event: CustomEvent<ScanCompletePayload>) => {
     storeEvent.emit('scan:complete', event.detail);
   };
 
-  const handleDownloadUpdate = (event: CustomEvent<{ taskId: string; data: DownloadTaskOptions }>) => {
+  const handleDownloadUpdate = (event: CustomEvent<DownloadUpdatePayload>) => {
     storeEvent.emit('download:update', event.detail);
   };
 
