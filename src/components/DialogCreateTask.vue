@@ -159,7 +159,7 @@ const createDownTask = async (data: WithResolved<VersionModel>) => {
       formData.append('previewFile', previewFile)
     }
 
-    const response = await request('/model-manager/download', {
+    const response = await request('/download', { // Changed from '/model-manager/download' to '/download'
       method: 'POST',
       body: formData,
     })
