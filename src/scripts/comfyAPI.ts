@@ -39,7 +39,7 @@ const initializeApi = () => {
   const reconnectDelay = 3000;
 
   // Wrap fetchApi to handle FormData and errors
-  const originalFetchApi = api.fetchApi;
+  const originalFetchApi = api.fetchApi.bind(api); // Bind to api
   api.fetchApi = async (url: string, options: RequestInit = {}): Promise<Response> => {
     const fetchOptions = { ...options };
 
