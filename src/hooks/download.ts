@@ -168,7 +168,7 @@ export const useDownload = defineStore('download', (store) => {
   const init = async () => {
     loading.show('downloadSettings')
     try {
-      const response = await request('/model-manager/download/setting', { method: 'GET' })
+      const response = await request('/model-manager/download/init', { method: 'POST' })
       if (!response.success) {
         throw new Error(response.error || 'Failed to initialize download settings')
       }
@@ -187,21 +187,23 @@ export const useDownload = defineStore('download', (store) => {
 
   const handleDownloadUpdate = ({ taskId, ...item }: { taskId: string } & Partial<DownloadTaskOptions>) => {
     const task = taskList.value.find((t) => t.taskId === taskId)
-    if (task) {
-      if (item.error) {
-        toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: item.error,
-          life: 5000,
-        })
-        item.error = undefined
-      }
-      Object.assign(task, createTaskItem({ taskId, ...task, ...item }))
+    if (!task) {
+      console.warn(`Task ${taskId} not found in taskList`)
+      return
     }
+    if (item.error) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: item.error,
+        life: 5000,
+      })
+      item.error = undefined
+    }
+    Object.assign(task, createTaskItem({ taskId, ...task, ...item }))
   }
 
-  const handleDownloadComplete = ({ taskId, model }: { taskId: string; model?: BaseModel }) => {
+  const handleDownloadComplete = async ({ taskId }: { taskId: string; model?: BaseModel }) => {
     const task = taskList.value.find((item) => item.taskId === taskId)
     taskList.value = taskList.value.filter((item) => item.taskId !== taskId)
     if (task) {
@@ -211,9 +213,8 @@ export const useDownload = defineStore('download', (store) => {
         detail: `${task.fullname} download completed`,
         life: 2000,
       })
-    }
-    if (model?.type) {
-      store.models.refresh()
+      // Always refresh models to ensure UI updates
+      await store.models.refresh()
     }
   }
 
