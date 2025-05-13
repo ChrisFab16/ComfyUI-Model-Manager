@@ -36,7 +36,7 @@ export const useDownload = defineStore('download', (store) => {
       downloadSpeed: `${bytesToSize(bps)}/s`,
       async pauseTask() {
         try {
-          const response = await request(`/model-manager/download/${taskId}`, {
+          const response = await request(`/download/${taskId}`, {
             method: 'PUT',
             body: JSON.stringify({ status: 'pause' }),
           });
@@ -50,7 +50,7 @@ export const useDownload = defineStore('download', (store) => {
       },
       async resumeTask() {
         try {
-          const response = await request(`/model-manager/download/${taskId}`, {
+          const response = await request(`/download/${taskId}`, {
             method: 'PUT',
             body: JSON.stringify({ status: 'resume' }),
           });
@@ -65,7 +65,7 @@ export const useDownload = defineStore('download', (store) => {
       async cancelTask() {
         try {
           console.log(t('cancelAsk', [t('downloadTask').toLowerCase()]));
-          const response = await request(`/model-manager/download/${taskId}`, {
+          const response = await request(`/download/${taskId}`, {
             method: 'PUT',
             body: JSON.stringify({ status: 'cancel' }),
           });
@@ -81,7 +81,7 @@ export const useDownload = defineStore('download', (store) => {
       async deleteTask() {
         try {
           console.log(t('deleteAsk', [t('downloadTask').toLowerCase()]));
-          const response = await request(`/model-manager/download/${taskId}`, {
+          const response = await request(`/download/${taskId}`, {
             method: 'DELETE',
           });
           if (!response.success) {
@@ -101,7 +101,7 @@ export const useDownload = defineStore('download', (store) => {
   const refresh = async () => {
     loading.show('downloadTasks');
     try {
-      const response = await request('/model-manager/download/task', { method: 'GET' });
+      const response = await request('/download/task', { method: 'GET' });
       if (!response.success) {
         throw new Error(response.error || 'Failed to fetch tasks');
       }
@@ -118,7 +118,7 @@ export const useDownload = defineStore('download', (store) => {
   const init = async () => {
     loading.show('downloadSettings');
     try {
-      const response = await request('/model-manager/download/init', { method: 'POST' });
+      const response = await request('/download/init', { method: 'POST' });
       if (!response.success) {
         throw new Error(response.error || 'Failed to initialize download settings');
       }
@@ -202,7 +202,7 @@ export const useModelSearch = () => {
 
     loading.show('modelSearch');
     try {
-      const response = await request(`/model-manager/model-info?model-page=${encodeURIComponent(url)}`, {
+      const response = await request(`/model-info?model-page=${encodeURIComponent(url)}`, {
         method: 'GET',
       });
       if (!response.success) {
