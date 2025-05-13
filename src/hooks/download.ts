@@ -1,32 +1,31 @@
-import { useLoading } from 'hooks/loading'
-import { useRequest } from 'hooks/request'
-import { defineStore } from 'hooks/store'
-import { useToast } from 'hooks/toast'
-import { BaseModel, DownloadTask, DownloadTaskOptions, SelectOptions, VersionModel } from 'types/typings'
-import { bytesToSize } from 'utils/common'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
+// src/hooks/download.ts
+import { useLoading } from 'hooks/loading';
+import { useRequest } from 'hooks/request';
+import { defineStore } from 'hooks/store';
+import { BaseModel, DownloadTask, DownloadTaskOptions, SelectOptions, VersionModel } from 'types/typings';
+import { bytesToSize } from 'utils/common';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 export const useDownload = defineStore('download', (store) => {
-  const { toast, confirm, wrapperToastError } = useToast()
-  const { t } = useI18n()
-  const { request } = useRequest()
-  const loading = useLoading()
+  const { t } = useI18n();
+  const { request } = useRequest();
+  const loading = useLoading();
 
-  const taskList = ref<DownloadTask[]>([])
+  const taskList = ref<DownloadTask[]>([]);
 
   const createTaskItem = (item: DownloadTaskOptions): DownloadTask => {
-    const { taskId, fullname, downloadedSize = 0, totalSize = 0, bps = 0, preview, error, ...rest } = item
+    const { taskId, fullname, downloadedSize = 0, totalSize = 0, bps = 0, preview, error, ...rest } = item;
 
     // Validate inputs
     if (!taskId || !fullname) {
-      throw new Error('Task ID and fullname are required')
+      throw new Error('Task ID and fullname are required');
     }
     if (downloadedSize < 0 || totalSize < 0 || bps < 0) {
-      throw new Error('Downloaded size, total size, and BPS must be non-negative')
+      throw new Error('Downloaded size, total size, and BPS must be non-negative');
     }
 
-    const progressPercent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+    const progressPercent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0;
 
     const task: DownloadTask = {
       ...rest,
@@ -35,291 +34,210 @@ export const useDownload = defineStore('download', (store) => {
       preview: preview || '/model-manager/preview/no-preview.png',
       downloadProgress: `${bytesToSize(downloadedSize)} / ${bytesToSize(totalSize)} (${progressPercent}%)`,
       downloadSpeed: `${bytesToSize(bps)}/s`,
-      pauseTask() {
-        wrapperToastError(async () => {
+      async pauseTask() {
+        try {
           const response = await request(`/model-manager/download/${taskId}`, {
             method: 'PUT',
             body: JSON.stringify({ status: 'pause' }),
-          })
+          });
           if (!response.success) {
-            throw new Error(response.error || 'Failed to pause task')
+            throw new Error(response.error || 'Failed to pause task');
           }
-          toast.add({
-            severity: 'info',
-            summary: 'Paused',
-            detail: `Paused download for ${fullname}`,
-            life: 2000,
-          })
-        })()
+          console.log('Paused', `Paused download for ${fullname}`);
+        } catch (error) {
+          console.error('Error', error.message || 'Failed to pause task');
+        }
       },
-      resumeTask() {
-        wrapperToastError(async () => {
+      async resumeTask() {
+        try {
           const response = await request(`/model-manager/download/${taskId}`, {
             method: 'PUT',
             body: JSON.stringify({ status: 'resume' }),
-          })
+          });
           if (!response.success) {
-            throw new Error(response.error || 'Failed to resume task')
+            throw new Error(response.error || 'Failed to resume task');
           }
-          toast.add({
-            severity: 'info',
-            summary: 'Resumed',
-            detail: `Resumed download for ${fullname}`,
-            life: 2000,
-          })
-        })()
+          console.log('Resumed', `Resumed download for ${fullname}`);
+        } catch (error) {
+          console.error('Error', error.message || 'Failed to resume task');
+        }
       },
-      cancelTask() {
-        confirm.require({
-          message: t('cancelAsk', [t('downloadTask').toLowerCase()]),
-          header: 'Confirm',
-          icon: 'pi pi-info-circle',
-          rejectProps: {
-            label: t('no'),
-            severity: 'secondary',
-            outlined: true,
-          },
-          acceptProps: {
-            label: t('yes'),
-            severity: 'danger',
-          },
-          accept: () => {
-            wrapperToastError(async () => {
-              const response = await request(`/model-manager/download/${taskId}`, {
-                method: 'PUT',
-                body: JSON.stringify({ status: 'cancel' }),
-              })
-              if (!response.success) {
-                throw new Error(response.error || 'Failed to cancel task')
-              }
-              taskList.value = taskList.value.filter((task) => task.taskId !== taskId)
-              toast.add({
-                severity: 'info',
-                summary: 'Cancelled',
-                detail: `Cancelled download for ${fullname}`,
-                life: 2000,
-              })
-            })()
-          },
-          reject: () => {},
-        })
+      async cancelTask() {
+        try {
+          console.log(t('cancelAsk', [t('downloadTask').toLowerCase()]));
+          const response = await request(`/model-manager/download/${taskId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: 'cancel' }),
+          });
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to cancel task');
+          }
+          taskList.value = taskList.value.filter((task) => task.taskId !== taskId);
+          console.log('Cancelled', `Cancelled download for ${fullname}`);
+        } catch (error) {
+          console.error('Error', error.message || 'Failed to cancel task');
+        }
       },
-      deleteTask() {
-        confirm.require({
-          message: t('deleteAsk', [t('downloadTask').toLowerCase()]),
-          header: 'Danger',
-          icon: 'pi pi-info-circle',
-          rejectProps: {
-            label: t('cancel'),
-            severity: 'secondary',
-            outlined: true,
-          },
-          acceptProps: {
-            label: t('delete'),
-            severity: 'danger',
-          },
-          accept: () => {
-            wrapperToastError(async () => {
-              const response = await request(`/model-manager/download/${taskId}`, {
-                method: 'DELETE',
-              })
-              if (!response.success) {
-                throw new Error(response.error || 'Failed to delete task')
-              }
-              taskList.value = taskList.value.filter((task) => task.taskId !== taskId)
-              toast.add({
-                severity: 'success',
-                summary: 'Deleted',
-                detail: `Deleted download task for ${fullname}`,
-                life: 2000,
-              })
-            })()
-          },
-          reject: () => {},
-        })
+      async deleteTask() {
+        try {
+          console.log(t('deleteAsk', [t('downloadTask').toLowerCase()]));
+          const response = await request(`/model-manager/download/${taskId}`, {
+            method: 'DELETE',
+          });
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to delete task');
+          }
+          taskList.value = taskList.value.filter((task) => task.taskId !== taskId);
+          console.log('Deleted', `Deleted download task for ${fullname}`);
+        } catch (error) {
+          console.error('Error', error.message || 'Failed to delete task');
+        }
       },
-    }
+    };
 
-    return task
-  }
+    return task;
+  };
 
-  const refresh = wrapperToastError(async () => {
-    loading.show('downloadTasks')
+  const refresh = async () => {
+    loading.show('downloadTasks');
     try {
-      const response = await request('/model-manager/download/task', { method: 'GET' })
+      const response = await request('/model-manager/download/task', { method: 'GET' });
       if (!response.success) {
-        throw new Error(response.error || 'Failed to fetch tasks')
+        throw new Error(response.error || 'Failed to fetch tasks');
       }
-      taskList.value = response.data.map((item: DownloadTaskOptions) => createTaskItem(item))
-      return taskList.value
+      taskList.value = response.data.map((item: DownloadTaskOptions) => createTaskItem(item));
+      return taskList.value;
     } catch (error) {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Failed to fetch download tasks',
-        life: 5000,
-      })
-      throw error
+      console.error('Error', error.message || 'Failed to fetch download tasks');
+      throw error;
     } finally {
-      loading.hide('downloadTasks')
+      loading.hide('downloadTasks');
     }
-  })
+  };
 
   const init = async () => {
-    loading.show('downloadSettings')
+    loading.show('downloadSettings');
     try {
-      const response = await request('/model-manager/download/init', { method: 'POST' })
+      const response = await request('/model-manager/download/init', { method: 'POST' });
       if (!response.success) {
-        throw new Error(response.error || 'Failed to initialize download settings')
+        throw new Error(response.error || 'Failed to initialize download settings');
       }
-      store.config.apiKeyInfo.value = response.data
+      store.config.apiKeyInfo.value = response.data;
     } catch (error) {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Failed to initialize download settings',
-        life: 5000,
-      })
+      console.error('Error', error.message || 'Failed to initialize download settings');
     } finally {
-      loading.hide('downloadSettings')
+      loading.hide('downloadSettings');
     }
-  }
+  };
 
   const handleDownloadUpdate = ({ taskId, ...item }: { taskId: string } & Partial<DownloadTaskOptions>) => {
-    const task = taskList.value.find((t) => t.taskId === taskId)
+    const task = taskList.value.find((t) => t.taskId === taskId);
     if (!task) {
-      console.warn(`Task ${taskId} not found in taskList`)
-      return
+      console.warn(`Task ${taskId} not found in taskList`);
+      return;
     }
     if (item.error) {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: item.error,
-        life: 5000,
-      })
-      item.error = undefined
+      console.error('Error', item.error);
+      item.error = undefined;
     }
-    Object.assign(task, createTaskItem({ taskId, ...task, ...item }))
-  }
+    Object.assign(task, createTaskItem({ taskId, ...task, ...item }));
+  };
 
   const handleDownloadComplete = async ({ taskId }: { taskId: string; model?: BaseModel }) => {
-    const task = taskList.value.find((item) => item.taskId === taskId)
-    taskList.value = taskList.value.filter((item) => item.taskId !== taskId)
+    const task = taskList.value.find((item) => item.taskId === taskId);
+    taskList.value = taskList.value.filter((item) => item.taskId !== taskId);
     if (task) {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: `${task.fullname} download completed`,
-        life: 2000,
-      })
-      // Always refresh models to ensure UI updates
-      await store.models.refresh()
+      console.log('Success', `${task.fullname} download completed`);
+      await store.models.refresh();
     }
-  }
+  };
 
   const handleReconnected = () => {
-    refresh()
-  }
+    refresh();
+  };
 
   onMounted(() => {
-    init()
-    refresh()
-    storeEvent.on('download:update', handleDownloadUpdate)
-    storeEvent.on('download:complete', handleDownloadComplete)
-    storeEvent.on('reconnected', handleReconnected)
-  })
+    init();
+    refresh();
+    store.on('download:update', handleDownloadUpdate);
+    store.on('download:complete', handleDownloadComplete);
+    store.on('reconnected', handleReconnected);
+  });
 
   onUnmounted(() => {
-    storeEvent.off('download:update', handleDownloadUpdate)
-    storeEvent.off('download:complete', handleDownloadComplete)
-    storeEvent.off('reconnected', handleReconnected)
-  })
+    store.off('download:update', handleDownloadUpdate);
+    store.off('download:complete', handleDownloadComplete);
+    store.off('reconnected', handleReconnected);
+  });
 
-  return { data: taskList, refresh }
-})
+  return { data: taskList, refresh };
+});
 
 declare module 'hooks/store' {
   interface StoreProvider {
-    download: ReturnType<typeof useDownload>
+    download: ReturnType<typeof useDownload>;
   }
 }
 
 export const useModelSearch = () => {
-  const { t } = useI18n()
-  const { toast } = useToast()
-  const { request } = useRequest()
-  const loading = useLoading()
-  const data = ref<(SelectOptions & { item: VersionModel })[]>([])
-  const current = ref<string | number>()
-  const currentModel = ref<VersionModel>()
+  const { t } = useI18n();
+  const loading = useLoading();
+  const { request } = useRequest();
+  const data = ref<(SelectOptions & { item: VersionModel })[]>([]);
+  const current = ref<string | number>();
+  const currentModel = ref<VersionModel>();
 
   const handleSearchByUrl = async (url: string) => {
     if (!url) {
-      return Promise.resolve([])
+      return Promise.resolve([]);
     }
 
     // Validate URL format
     try {
-      new URL(url)
+      new URL(url);
     } catch {
-      toast.add({
-        severity: 'error',
-        summary: 'Validation Error',
-        detail: 'Invalid URL format',
-        life: 5000,
-      })
-      return []
+      console.error('Validation Error', 'Invalid URL format');
+      return [];
     }
 
-    loading.show('modelSearch')
+    loading.show('modelSearch');
     try {
       const response = await request(`/model-manager/model-info?model-page=${encodeURIComponent(url)}`, {
         method: 'GET',
-      })
+      });
       if (!response.success) {
-        throw new Error(response.error || 'Failed to search models')
+        throw new Error(response.error || 'Failed to search models');
       }
-      const resData: VersionModel[] = response.data
+      const resData: VersionModel[] = response.data;
       data.value = resData.map((item) => ({
         label: item.shortname || item.name || item.id || 'Unknown',
         value: item.id,
         item,
         command() {
-          current.value = item.id
+          current.value = item.id;
         },
-      }))
-      current.value = data.value[0]?.value
-      currentModel.value = data.value[0]?.item
+      }));
+      current.value = data.value[0]?.value;
+      currentModel.value = data.value[0]?.item;
 
       if (resData.length === 0) {
-        toast.add({
-          severity: 'warn',
-          summary: 'No Model Found',
-          detail: `No model found for ${url}`,
-          life: 5000,
-        })
+        console.warn('No Model Found', `No model found for ${url}`);
       }
 
-      return resData
+      return resData;
     } catch (error) {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Failed to search models',
-        life: 5000,
-      })
-      return []
+      console.error('Error', error.message || 'Failed to search models');
+      return [];
     } finally {
-      loading.hide('modelSearch')
+      loading.hide('modelSearch');
     }
-  }
+  };
 
   watch(current, () => {
     currentModel.value = data.value.find(
       (option) => option.value === current.value,
-    )?.item
-  })
+    )?.item;
+  });
 
-  return { data, current, currentModel, search: handleSearchByUrl }
-}
+  return { data, current, currentModel, search: handleSearchByUrl };
+};
