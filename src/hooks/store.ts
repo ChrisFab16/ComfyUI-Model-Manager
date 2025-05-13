@@ -1,5 +1,5 @@
-import { inject, InjectionKey, provide, ref, Ref } from 'vue';
-import { useToast } from 'hooks/toast';
+// src/hooks/store.ts
+import { inject, InjectionKey, provide } from 'vue';
 import { Model, DownloadTaskOptions } from 'types/typings';
 import { api } from 'scripts/comfyAPI';
 
@@ -116,19 +116,11 @@ const getStoreKey = (key: string): symbol => {
  * @returns The StoreProvider instance with initialized stores.
  */
 export const useStoreProvider = (): StoreProvider => {
-  const { toast } = useToast();
-
   for (const [key, useHook] of providerHooks) {
     try {
       storeEvent[key] = useHook();
     } catch (error) {
       console.error(`[useStoreProvider] Failed to initialize store "${key}":`, error);
-      toast.add({
-        severity: 'error',
-        summary: 'Store Error',
-        detail: `Failed to initialize store "${key}": ${error.message || 'Unknown error'}`,
-        life: 5000,
-      });
     }
   }
 
@@ -172,18 +164,11 @@ export const useStoreProvider = (): StoreProvider => {
  * @returns A function to inject the store instance.
  */
 export const defineStore = <T>(key: string, useInitial: (event: StoreProvider) => T): (() => T) => {
-  const { toast } = useToast();
   const storeKey = getStoreKey(key) as InjectionKey<T>;
 
   if (providerHooks.has(key)) {
     const errorMessage = `[defineStore] Store key "${key}" already exists.`;
     console.error(errorMessage);
-    toast.add({
-      severity: 'error',
-      summary: 'Store Error',
-      detail: errorMessage,
-      life: 5000,
-    });
     throw new Error(errorMessage);
   }
 
@@ -194,12 +179,6 @@ export const defineStore = <T>(key: string, useInitial: (event: StoreProvider) =
       return result;
     } catch (error) {
       console.error(`[defineStore] Failed to initialize store "${key}":`, error);
-      toast.add({
-        severity: 'error',
-        summary: 'Store Error',
-        detail: `Failed to initialize store "${key}": ${error.message || 'Unknown error'}`,
-        life: 5000,
-      });
       throw error;
     }
   });
@@ -209,12 +188,6 @@ export const defineStore = <T>(key: string, useInitial: (event: StoreProvider) =
     if (!store) {
       const errorMessage = `Store "${key}" not found. Ensure it is provided by a parent component.`;
       console.error(errorMessage);
-      toast.add({
-        severity: 'error',
-        summary: 'Store Error',
-        detail: errorMessage,
-        life: 5000,
-      });
       throw new Error(errorMessage);
     }
     return store;
