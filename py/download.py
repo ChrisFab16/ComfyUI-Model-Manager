@@ -16,6 +16,7 @@ from . import config
 from . import utils
 from . import thread
 
+
 @dataclass
 class TaskStatus:
     taskId: str
@@ -58,6 +59,7 @@ class TaskStatus:
             "error": self.error,
         }
 
+
 @dataclass
 class TaskContent:
     type: str
@@ -93,6 +95,7 @@ class TaskContent:
             "extension": self.extension,
             "hashes": self.hashes,
         }
+
 
 class ApiKey:
     __store: dict[str, str] = {}
@@ -136,6 +139,7 @@ class ApiKey:
             utils.save_dict_pickle_file(self.__cache_file, self.__store)
         except Exception as e:
             utils.print_error(f"Failed to save API keys: {str(e)}")
+
 
 class ModelDownload:
     def __init__(self):
@@ -461,11 +465,7 @@ class ModelDownload:
                 utils.rename_model(download_tmp_file, model_path)
                 task_file = os.path.join(download_path, f"{task_id}.task")
                 os.remove(task_file)
-                await utils.send_json("complete_download_task", {
-                    "taskId": task_id,
-                    "type": model_type,
-                    "modelPath": model_path
-                })
+                await utils.send_json("complete_download_task", task_id)  # Send only task_id
             except Exception as e:
                 raise RuntimeError(f"Failed to complete download: {str(e)}") from e
 
@@ -503,7 +503,7 @@ class ModelDownload:
                     raise RuntimeError(f"Failed to download {task_content.fullname}, status: {response.status}")
                 content_type = response.headers.get("content-type")
                 if content_type and content_type.startswith("text/html"):
-                    raise RuntimeError(f"{task_content.fullname} requires login. Please set the API key.")
+                    raise RuntimeError(f"{task_content.fullname} requires login. Please set the API key for {task_content.downloadPlatform} in settings.")
                 response_total_size = float(response.headers.get("content-length", 0))
                 if total_size == 0 or total_size != response_total_size:
                     total_size = response_total_size
