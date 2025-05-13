@@ -59,7 +59,7 @@ class ModelManager:
                         await utils.send_json("complete_scan_task", {"task_id": task_id, "results": results})
                 except Exception as e:
                     with self.lock:
-                        self.running_tasks(task_id)["status"] = "failed"
+                        self.running_tasks[task_id]["status"] = "failed"
                         self.running_tasks[task_id]["error"] = str(e)
                         await utils.send_json("error_scan_task", {"task_id": task_id, "error": str(e)})
 
