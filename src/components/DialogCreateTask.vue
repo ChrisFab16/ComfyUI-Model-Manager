@@ -89,19 +89,21 @@ const isSearching = ref(false)
 const { current, currentModel, data, search } = useModelSearch()
 
 const canSubmit = computed(() => {
-  return (
-    currentModel.value &&
-    currentModel.value.type &&
-    currentModel.value.pathIndex !== undefined &&
-    currentModel.value.basename &&
-    currentModel.value.downloadUrl &&
-    !models.value[currentModel.value.type]?.find(
+  if (!currentModel.value) return false
+  const { type, pathIndex, basename, downloadUrl } = currentModel.value
+  const isValid =
+    type &&
+    pathIndex !== undefined &&
+    basename &&
+    downloadUrl &&
+    !models.value[type]?.find(
       (m) =>
-        m.basename === currentModel.value.basename &&
+        m.basename === basename &&
         m.subFolder === currentModel.value.subFolder &&
         m.extension === currentModel.value.extension
     )
-  )
+  console.log('canSubmit:', { type, pathIndex, basename, downloadUrl, isValid })
+  return isValid
 })
 
 const searchModelsByUrl = async () => {
@@ -110,7 +112,9 @@ const searchModelsByUrl = async () => {
   loading.show('searchModels')
   try {
     await search(modelUrl.value)
+    console.log('Search completed:', data.value)
   } catch (error) {
+    console.error('Search error:', error.message || t('searchModelsFailed'))
     toast.add({
       severity: 'error',
       summary: t('error'),
@@ -125,6 +129,12 @@ const searchModelsByUrl = async () => {
 
 const createDownTask = async (data: WithResolved<VersionModel>) => {
   if (!canSubmit.value) {
+    console.warn('Validation failed:', {
+      type: data.type,
+      pathIndex: data.pathIndex,
+      fullname: data.fullname,
+      url: data.downloadUrl,
+    })
     toast.add({
       severity: 'warn',
       summary: t('validationError'),
@@ -136,12 +146,19 @@ const createDownTask = async (data: WithResolved<VersionModel>) => {
 
   loading.show('createTask')
   try {
-    await download({
+    console.log('Initiating download with data:', {
       type: data.type,
       pathIndex: data.pathIndex,
       fullname: data.fullname,
-      url: data.downloadUrl
+      url: data.downloadUrl,
     })
+    const response = await download({
+      type: data.type,
+      pathIndex: data.pathIndex,
+      fullname: data.fullname,
+      url: data.downloadUrl,
+    })
+    console.log('Download request sent to /api/model-manager/download:', response)
 
     dialog.close()
     toast.add({
@@ -151,6 +168,7 @@ const createDownTask = async (data: WithResolved<VersionModel>) => {
       life: 3000,
     })
   } catch (error) {
+    console.error('Download error:', error.message || t('createTaskFailed'))
     toast.add({
       severity: 'error',
       summary: t('error'),

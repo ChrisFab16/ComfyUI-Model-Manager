@@ -165,9 +165,10 @@ export const useModels = defineStore('models', (store) => {
     loading.show('downloadModel')
     try {
       console.log('Downloading model:', data)
-      const response = await request('/model-manager/download', {
+      const response = await request('/download', {
         method: 'POST',
         body: formData,
+        modelManagerPrefix: true,
       })
       if (!response.success) {
         throw new Error(response.error || t('downloadModelFailed'))

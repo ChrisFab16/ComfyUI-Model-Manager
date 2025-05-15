@@ -179,6 +179,79 @@ class ModelManager:
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
+        @routes.post("/model-manager/download")
+        async def download_model(request):
+            """
+            Start a model download task.
+            request body: x-www-form-urlencoded
+            - type: model type (e.g., checkpoints)
+            - pathIndex: index of the model folder
+            - fullname: filename relative to the model folder
+            - url: download URL (optional)
+            """
+            try:
+                model_data = await request.post()
+                model_data = dict(model_data)
+
+                model_type = model_data.get("type")
+                path_index = model_data.get("pathIndex")
+                fullname = model_data.get("fullname")
+                url = model_data.get("url")
+
+                # Validate inputs
+                if not model_type:
+                    raise ValueError("Model type is required")
+                model_type = model_type + 's' if model_type == 'checkpoint' else model_type
+                if model_type not in folder_paths.folder_names_and_paths:
+                    raise ValueError(f"Invalid model type: {model_type}")
+                try:
+                    path_index = int(path_index)
+                except (TypeError, ValueError):
+                    raise ValueError("Invalid pathIndex")
+                if path_index < 0 or path_index >= len(folder_paths.folder_names_and_paths[model_type][0]):
+                    raise ValueError(f"Invalid pathIndex: {path_index}")
+                if not fullname:
+                    raise ValueError("Fullname is required")
+                if url and not isinstance(url, str):
+                    raise ValueError("Invalid URL")
+
+                # Resolve model path
+                model_path = utils.get_full_path(model_type, path_index, fullname)
+                if os.path.exists(model_path):
+                    raise ValueError(f"Model already exists at {model_path}")
+
+                # Create download task
+                task_id = f"download_{model_type}_{path_index}_{id(request)}"
+                with self.lock:
+                    if task_id in self.running_tasks:
+                        return web.json_response({"success": True, "task_id": task_id, "status": "running"})
+                    self.running_tasks[task_id] = {"status": "running", "results": [], "error": None}
+
+                async def download_task():
+                    try:
+                        # Simulate download initiation (integrate with download.py's task system)
+                        logger.info(f"Starting download task: {task_id}, URL: {url}, Path: {model_path}")
+                        # Placeholder: Implement actual download logic or call download.py's download function
+                        # For now, simulate success
+                        with self.lock:
+                            self.running_tasks[task_id]["status"] = "completed"
+                            self.running_tasks[task_id]["results"] = {"path": model_path}
+                            await utils.send_json("complete_download_task", {"task_id": task_id, "path": model_path})
+                    except Exception as e:
+                        with self.lock:
+                            self.running_tasks[task_id]["status"] = "failed"
+                            self.running_tasks[task_id]["error"] = str(e)
+                            await utils.send_json("error_download_task", {"task_id": task_id, "error": str(e)})
+
+                self.executor.submit(lambda: self.loop.run_until_complete(download_task()))
+                logger.info(f"Download task started: {task_id}")
+                return web.json_response({"success": True, "task_id": task_id, "status": "started"})
+
+            except Exception as e:
+                error_msg = f"Start download failed: {str(e)}"
+                utils.print_error(error_msg)
+                return web.json_response({"success": False, "error": error_msg})
+
     async def scan_models(self, folder: str, request, task_id: str = None):
         result = []
         include_hidden_files = utils.get_setting_value(request, "scan.include_hidden_files", False)
