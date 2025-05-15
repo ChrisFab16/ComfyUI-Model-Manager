@@ -70,7 +70,6 @@ import { useDialog } from 'hooks/dialog'
 import { useModelSearch } from 'hooks/download'
 import { useLoading } from 'hooks/loading'
 import { useModels } from 'hooks/model'
-import { request } from 'hooks/request'
 import { useToast } from 'hooks/toast'
 import Button from 'primevue/button'
 import { VersionModel, WithResolved } from 'types/typings'
@@ -82,7 +81,7 @@ const { toast } = useToast()
 const { t } = useI18n()
 const loading = useLoading()
 const dialog = useDialog()
-const { data: models } = useModels()
+const { data: models, download } = useModels()
 
 const modelUrl = ref<string>()
 const isSearching = ref(false)
@@ -96,7 +95,6 @@ const canSubmit = computed(() => {
     currentModel.value.pathIndex !== undefined &&
     currentModel.value.basename &&
     currentModel.value.downloadUrl &&
-    currentModel.value.downloadPlatform &&
     !models.value[currentModel.value.type]?.find(
       (m) =>
         m.basename === currentModel.value.basename &&
@@ -138,35 +136,12 @@ const createDownTask = async (data: WithResolved<VersionModel>) => {
 
   loading.show('createTask')
   try {
-    const formData = new FormData()
-    formData.append('type', data.type)
-    formData.append('pathIndex', String(data.pathIndex))
-    formData.append('fullname', data.fullname)
-    formData.append('extension', data.extension || '')
-    formData.append('downloadPlatform', data.downloadPlatform)
-    formData.append('downloadUrl', data.downloadUrl)
-    if (data.sizeBytes) {
-      formData.append('sizeBytes', String(data.sizeBytes))
-    }
-    if (data.description) {
-      formData.append('description', data.description)
-    }
-    if (data.hashes) {
-      formData.append('hashes', JSON.stringify(data.hashes))
-    }
-    if (data.preview) {
-      const previewFile = await previewUrlToFile(data.preview as string)
-      formData.append('previewFile', previewFile)
-    }
-
-    const response = await request('/download', { // Changed from '/model-manager/download' to '/download'
-      method: 'POST',
-      body: formData,
+    await download({
+      type: data.type,
+      pathIndex: data.pathIndex,
+      fullname: data.fullname,
+      url: data.downloadUrl
     })
-
-    if (!response.success) {
-      throw new Error(response.error || t('createTaskFailed'))
-    }
 
     dialog.close()
     toast.add({

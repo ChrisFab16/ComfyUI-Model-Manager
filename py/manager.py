@@ -4,6 +4,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from aiohttp import web
 from . import utils
+import logging
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class ModelManager:
     def __init__(self):
@@ -28,6 +33,7 @@ class ModelManager:
             """
             try:
                 result = utils.resolve_model_base_paths()
+                logger.info(f"Returning folders: {result}")
                 return web.json_response({"success": True, "data": result})
             except Exception as e:
                 error_msg = f"Read models failed: {str(e)}"
@@ -100,7 +106,12 @@ class ModelManager:
             filename = request.match_info.get("filename", None)
 
             try:
+                # Normalize model_type (e.g., checkpoint -> checkpoints)
+                model_type = model_type + 's' if model_type == 'checkpoint' else model_type
                 model_path = utils.get_valid_full_path(model_type, path_index, filename)
+                logger.info(f"Get model info - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}, Path: {model_path}")
+                if model_path is None:
+                    raise RuntimeError(f"File {filename} not found")
                 result = self.get_model_info(model_path)
                 return web.json_response({"success": True, "data": result})
             except Exception as e:
@@ -112,7 +123,6 @@ class ModelManager:
         async def update_model(request):
             """
             Update model information.
-
             request body: x-www-form-urlencoded
             - previewFile: preview file.
             - description: description.
@@ -125,13 +135,18 @@ class ModelManager:
             path_index = int(request.match_info.get("index", None))
             filename = request.match_info.get("filename", None)
 
+            # Normalize model_type (e.g., checkpoint -> checkpoints)
+            model_type = model_type + 's' if model_type == 'checkpoint' else model_type
+            logger.info(f"Update model - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}")
+
             model_data = await request.post()
             model_data = dict(model_data)
 
             try:
                 model_path = utils.get_valid_full_path(model_type, path_index, filename)
+                logger.info(f"Model path resolved: {model_path}")
                 if model_path is None:
-                    raise RuntimeError(f"File {filename} not found")
+                    raise RuntimeError(f"File {filename} not found at index {path_index} for type {model_type}")
                 self.update_model(model_path, model_data)
                 return web.json_response({"success": True})
             except Exception as e:
@@ -148,10 +163,15 @@ class ModelManager:
             path_index = int(request.match_info.get("index", None))
             filename = request.match_info.get("filename", None)
 
+            # Normalize model_type (e.g., checkpoint -> checkpoints)
+            model_type = model_type + 's' if model_type == 'checkpoint' else model_type
+            logger.info(f"Delete model - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}")
+
             try:
                 model_path = utils.get_valid_full_path(model_type, path_index, filename)
+                logger.info(f"Model path resolved: {model_path}")
                 if model_path is None:
-                    raise RuntimeError(f"File {filename} not found")
+                    raise RuntimeError(f"File {filename} not found at index {path_index} for type {model_type}")
                 self.remove_model(model_path)
                 return web.json_response({"success": True})
             except Exception as e:
@@ -261,6 +281,8 @@ class ModelManager:
             fullname = model_data.get("fullname", None)
             if model_type is None or path_index is None or fullname is None:
                 raise RuntimeError("Invalid type or pathIndex or fullname")
+            # Normalize model_type for rename
+            model_type = model_type + 's' if model_type == 'checkpoint' else model_type
             new_model_path = utils.get_full_path(model_type, path_index, fullname)
             utils.rename_model(model_path, new_model_path)
 

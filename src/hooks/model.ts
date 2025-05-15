@@ -46,8 +46,8 @@ export const genModelFullName = (model: BaseModel) => {
 }
 
 export const genModelUrl = (model: BaseModel) => {
-  const fullname = genModelFullName(model)
-  return `/model/${model.type}/${model.pathIndex}/${fullname}` // Remove /model-manager prefix
+  if (!model?.type || model.pathIndex == null || !model.fullname) return ''
+  return `/model-manager/model/${model.type}/${model.pathIndex}/${model.fullname}`
 }
 
 export const useModels = defineStore('models', (store) => {
@@ -69,8 +69,12 @@ export const useModels = defineStore('models', (store) => {
       if (!response.success) {
         throw new Error(response.error || t('fetchFoldersFailed'))
       }
-      folders.value = response.data
+      folders.value = response.data || {}
+      if (Object.keys(folders.value).length === 0) {
+        console.warn(t('warning'), t('noModelFoldersConfigured'))
+      }
       initialized.value = true
+      console.log('Folders refreshed:', folders.value)
     } catch (error) {
       console.error(t('error'), error.message || t('fetchFoldersFailed'))
     } finally {
@@ -96,6 +100,7 @@ export const useModels = defineStore('models', (store) => {
       }
       const { taskId } = response
       scanTasks.value[folder] = { taskId, status: 'running', error: null }
+      console.log(`Scan started for ${folder}: taskId=${taskId}`)
     } catch (error) {
       console.error(t('error'), error.message || t('scanStartFailed'))
     } finally {
@@ -129,6 +134,51 @@ export const useModels = defineStore('models', (store) => {
         t('partialFailure'),
         t('refreshFailures', { count: failures }),
       )
+    }
+  }
+
+  const downloadModel = async (data: {
+    type: string
+    pathIndex: number
+    fullname: string
+    url?: string
+  }) => {
+    // Validate inputs
+    if (!data.type || !(data.type in folders.value)) {
+      throw new Error(t('modelTypeInvalid'))
+    }
+    if (!data.fullname) {
+      throw new Error(t('modelNameRequired'))
+    }
+    if (data.pathIndex < 0 || data.pathIndex >= (folders.value[data.type]?.length || 0)) {
+      throw new Error(t('pathIndexInvalid'))
+    }
+
+    const formData = new FormData()
+    formData.set('type', data.type)
+    formData.set('pathIndex', String(data.pathIndex))
+    formData.set('fullname', data.fullname)
+    if (data.url) {
+      formData.set('url', data.url)
+    }
+
+    loading.show('downloadModel')
+    try {
+      console.log('Downloading model:', data)
+      const response = await request('/model-manager/download', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!response.success) {
+        throw new Error(response.error || t('downloadModelFailed'))
+      }
+      console.log(t('success'), t('downloadStarted', { name: data.fullname }))
+      return response
+    } catch (error) {
+      console.error(t('error'), error.message || t('downloadModelFailed'))
+      throw error
+    } finally {
+      loading.hide('downloadModel')
     }
   }
 
@@ -221,12 +271,15 @@ export const useModels = defineStore('models', (store) => {
     }
 
     if (!needUpdate) {
+      console.log('No changes to update for model:', model.basename)
       return
     }
 
     loading.show('updateModel')
     try {
-      const response = await request(genModelUrl(model), {
+      const url = genModelUrl(model)
+      console.log('Updating model:', { url, data: Object.fromEntries(updateData) })
+      const response = await request(url, {
         method: 'PUT',
         body: updateData,
       })
@@ -240,6 +293,7 @@ export const useModels = defineStore('models', (store) => {
       console.log(t('success'), t('modelUpdated', { name: data.basename }))
     } catch (error) {
       console.error(t('error'), error.message || t('updateModelFailed'))
+      throw error
     } finally {
       loading.hide('updateModel')
     }
@@ -369,6 +423,7 @@ export const useModels = defineStore('models', (store) => {
     refresh: refreshAllModels,
     remove: deleteModel,
     update: updateModel,
+    download: downloadModel,
     openModelDetail,
     getFullPath,
   }
@@ -682,7 +737,7 @@ export const useModelPreviewEditor = (formInstance: ModelFormInstance) => {
 
   const noPreviewContent = computed(() => {
     const folder = model.value.type || 'unknown'
-    return `/preview/${folder}/0/no-preview.png` // Updated to remove /model-manager
+    return `/preview/${folder}/0/no-preview.png`
   })
 
   const preview = computed({
