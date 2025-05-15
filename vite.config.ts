@@ -47,14 +47,7 @@ function output(): Plugin {
     generateBundle(_, bundle) {
       for (const key in bundle) {
         const chunk = bundle[key]
-
-        if (chunk.type === 'asset') {
-          if (chunk.fileName === 'index.html') {
-            delete bundle[key]
-          }
-        }
-
-        if (chunk.fileName.startsWith('assets/')) {
+        if (chunk.type === 'asset' && chunk.fileName.startsWith('assets/')) {
           chunk.fileName = chunk.fileName.replace('assets/', '')
         }
       }
@@ -116,8 +109,6 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     rollupOptions: {
-      // Disabling tree-shaking
-      // Prevent vite remove unused exports
       treeshake: true,
       output: {
         manualChunks(id) {
