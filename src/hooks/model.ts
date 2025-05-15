@@ -1,16 +1,22 @@
-// src/hooks/models.ts
-import DialogModelDetail from 'components/DialogModelDetail.vue';
-import { useLoading } from 'hooks/loading';
-import { useMarkdown } from 'hooks/markdown';
-import { useRequest } from 'hooks/request';
-import { defineStore } from 'hooks/store';
-import { castArray, cloneDeep } from 'lodash';
-import { TreeNode } from 'primevue/treenode';
-import { app } from 'scripts/comfyAPI';
-import { BaseModel, Model, SelectEvent, VersionModel, WithResolved } from 'types/typings';
-import { bytesToSize, formatDate, previewUrlToFile } from 'utils/common';
-import { ModelGrid } from 'utils/legacy';
-import { genModelKey, resolveModelTypeLoader } from 'utils/model';
+// src/hooks/model.ts
+import DialogModelDetail from 'components/DialogModelDetail.vue'
+import { useLoading } from 'hooks/loading'
+import { useMarkdown } from 'hooks/markdown'
+import { useRequest } from 'hooks/request'
+import { defineStore } from 'hooks/store'
+import { castArray, cloneDeep } from 'lodash'
+import { TreeNode } from 'primevue/treenode'
+import { app } from 'scripts/comfyAPI'
+import {
+  BaseModel,
+  Model,
+  SelectEvent,
+  VersionModel,
+  WithResolved,
+} from 'types/typings'
+import { bytesToSize, formatDate, previewUrlToFile } from 'utils/common'
+import { ModelGrid } from 'utils/legacy'
+import { genModelKey, resolveModelTypeLoader } from 'utils/model'
 import {
   computed,
   inject,
@@ -19,168 +25,183 @@ import {
   onMounted,
   onUnmounted,
   provide,
-  ref, // Added import
+  ref,
   type Ref,
   toRaw,
   toValue,
   unref,
-} from 'vue';
-import { useI18n } from 'vue-i18n';
-import { configSetting } from './config';
+} from 'vue'
+import { useI18n } from 'vue-i18n'
+import { configSetting } from './config'
 
-type ModelFolder = Record<string, string[]>;
+type ModelFolder = Record<string, string[]>
 
-const modelFolderProvideKey = Symbol('modelFolder') as InjectionKey<Ref<ModelFolder>>;
+const modelFolderProvideKey = Symbol('modelFolder') as InjectionKey<
+  Ref<ModelFolder>
+>
 
 export const genModelFullName = (model: BaseModel) => {
-  const filename = `${model.basename}${model.extension || ''}`;
-  return [model.subFolder, filename].filter(Boolean).join('/');
-};
+  const filename = `${model.basename}${model.extension || ''}`
+  return [model.subFolder, filename].filter(Boolean).join('/')
+}
 
 export const genModelUrl = (model: BaseModel) => {
-  const fullname = genModelFullName(model);
-  return `/model-manager/model/${model.type}/${model.pathIndex}/${fullname}`;
-};
+  const fullname = genModelFullName(model)
+  return `/model/${model.type}/${model.pathIndex}/${fullname}` // Remove /model-manager prefix
+}
 
 export const useModels = defineStore('models', (store) => {
-  const { t } = useI18n();
-  const { request } = useRequest();
-  const loading = useLoading();
+  const { t } = useI18n()
+  const { request } = useRequest()
+  const loading = useLoading()
 
-  const folders = ref<ModelFolder>({});
-  const initialized = ref(false);
-  const models = ref<Record<string, Model[]>>({});
-  const scanTasks = ref<Record<string, { taskId: string; status: string; error: string | null }>>({});
+  const folders = ref<ModelFolder>({})
+  const initialized = ref(false)
+  const models = ref<Record<string, Model[]>>({})
+  const scanTasks = ref<
+    Record<string, { taskId: string; status: string; error: string | null }>
+  >({})
 
   const refreshFolders = async () => {
-    loading.show('folders');
+    loading.show('folders')
     try {
-      const response = await request('/model-manager/models');
+      const response = await request('/models')
       if (!response.success) {
-        throw new Error(response.error || t('fetchFoldersFailed'));
+        throw new Error(response.error || t('fetchFoldersFailed'))
       }
-      folders.value = response.data;
-      initialized.value = true;
+      folders.value = response.data
+      initialized.value = true
     } catch (error) {
-      console.error(t('error'), error.message || t('fetchFoldersFailed'));
+      console.error(t('error'), error.message || t('fetchFoldersFailed'))
     } finally {
-      loading.hide('folders');
+      loading.hide('folders')
     }
-  };
+  }
 
-  provide(modelFolderProvideKey, folders);
+  provide(modelFolderProvideKey, folders)
 
   const refreshModels = async (folder: string) => {
-    if (!folder || scanTasks.value[folder]?.status === 'running') return;
+    if (!folder || scanTasks.value[folder]?.status === 'running') return
 
     if (!(folder in folders.value)) {
-      console.error(t('error'), t('invalidModelType', { type: folder }));
-      return;
+      console.error(t('error'), t('invalidModelType', { type: folder }))
+      return
     }
 
-    loading.show(`scan-${folder}`);
+    loading.show(`scan-${folder}`)
     try {
-      const response = await request(`/model-manager/scan/start?folder=${folder}`);
+      const response = await request(`/scan/start?folder=${folder}`)
       if (!response.success) {
-        throw new Error(response.error || t('scanStartFailed'));
+        throw new Error(response.error || t('scanStartFailed'))
       }
-      const { taskId } = response;
-      scanTasks.value[folder] = { taskId, status: 'running', error: null };
+      const { taskId } = response
+      scanTasks.value[folder] = { taskId, status: 'running', error: null }
     } catch (error) {
-      console.error(t('error'), error.message || t('scanStartFailed'));
+      console.error(t('error'), error.message || t('scanStartFailed'))
     } finally {
-      loading.hide(`scan-${folder}`);
+      loading.hide(`scan-${folder}`)
     }
-  };
+  }
 
   const refreshAllModels = async (force = false) => {
-    const forceRefresh = force ? refreshFolders() : Promise.resolve();
-    models.value = {};
+    const forceRefresh = force ? refreshFolders() : Promise.resolve()
+    models.value = {}
     const excludeScanTypes = app.ui?.settings.getSettingValue<string>(
       configSetting.excludeScanTypes,
-    );
+    )
     const customBlackList =
       excludeScanTypes
         ?.split(',')
         .map((type) => type.trim())
-        .filter(Boolean) ?? [];
+        .filter(Boolean) ?? []
     const results = await forceRefresh.then(() =>
       Promise.allSettled(
         Object.keys(folders.value)
           .filter((folder) => !customBlackList.includes(folder))
           .map(async (folder) => {
-            await refreshModels(folder);
+            await refreshModels(folder)
           }),
       ),
-    );
-    const failures = results.filter((r) => r.status === 'rejected').length;
+    )
+    const failures = results.filter((r) => r.status === 'rejected').length
     if (failures > 0) {
-      console.error(t('partialFailure'), t('refreshFailures', { count: failures }));
+      console.error(
+        t('partialFailure'),
+        t('refreshFailures', { count: failures }),
+      )
     }
-  };
+  }
 
   const updateModel = async (
     model: BaseModel,
     data: WithResolved<BaseModel | VersionModel>,
     formData?: FormData,
   ) => {
-    const updateData = formData || new FormData();
-    let oldKey: string | null = null;
-    let needUpdate = false;
+    const updateData = formData || new FormData()
+    let oldKey: string | null = null
+    let needUpdate = false
 
     // Validate inputs
-    const invalidChars = /[\\/:*?"<>|]/;
+    const invalidChars = /[\\/:*?"<>|]/
     if (!data.type || !(data.type in folders.value)) {
-      console.error(t('validationError'), t('modelTypeInvalid'));
-      return;
+      console.error(t('validationError'), t('modelTypeInvalid'))
+      return
     }
     if (!data.basename) {
-      console.error(t('validationError'), t('modelNameRequired'));
-      return;
+      console.error(t('validationError'), t('modelNameRequired'))
+      return
     }
     if (invalidChars.test(data.basename)) {
-      console.error(t('validationError'), t('modelNameInvalid'));
-      return;
+      console.error(t('validationError'), t('modelNameInvalid'))
+      return
     }
     if (data.subFolder && invalidChars.test(data.subFolder)) {
-      console.error(t('validationError'), t('subFolderInvalid'));
-      return;
+      console.error(t('validationError'), t('subFolderInvalid'))
+      return
     }
     if (
       data.extension &&
-      !['.safetensors', '.ckpt', '.pt', '.bin', '.pth'].includes(data.extension.toLowerCase())
+      !['.safetensors', '.ckpt', '.pt', '.bin', '.pth'].includes(
+        data.extension.toLowerCase(),
+      )
     ) {
-      console.error(t('validationError'), t('extensionInvalid'));
-      return;
+      console.error(t('validationError'), t('extensionInvalid'))
+      return
     }
-    if (data.pathIndex < 0 || data.pathIndex >= (folders.value[data.type]?.length || 0)) {
-      console.error(t('validationError'), t('pathIndexInvalid'));
-      return;
+    if (
+      data.pathIndex < 0 ||
+      data.pathIndex >= (folders.value[data.type]?.length || 0)
+    ) {
+      console.error(t('validationError'), t('pathIndexInvalid'))
+      return
     }
     if (
       models.value[data.type]?.find(
-        (m) => m.basename === data.basename && m.subFolder === data.subFolder && m.extension === data.extension,
+        (m) =>
+          m.basename === data.basename &&
+          m.subFolder === data.subFolder &&
+          m.extension === data.extension,
       )
     ) {
-      console.error(t('validationError'), t('modelNameExists'));
-      return;
+      console.error(t('validationError'), t('modelNameExists'))
+      return
     }
 
     // Check preview
     if (model.preview !== data.preview) {
       if (data.preview) {
-        const previewFile = await previewUrlToFile(data.preview as string);
-        updateData.set('previewFile', previewFile);
+        const previewFile = await previewUrlToFile(data.preview as string)
+        updateData.set('previewFile', previewFile)
       } else {
-        updateData.set('previewFile', '');
+        updateData.set('previewFile', '')
       }
-      needUpdate = true;
+      needUpdate = true
     }
 
     // Check description
     if (model.description !== data.description) {
-      updateData.set('description', data.description || '');
-      needUpdate = true;
+      updateData.set('description', data.description || '')
+      needUpdate = true
     }
 
     // Check name and path
@@ -191,79 +212,77 @@ export const useModels = defineStore('models', (store) => {
       model.type !== data.type ||
       model.extension !== data.extension
     ) {
-      oldKey = genModelKey(model);
-      updateData.set('type', data.type);
-      updateData.set('pathIndex', String(data.pathIndex));
-      updateData.set('fullname', genModelFullName(data as BaseModel));
-      updateData.set('extension', data.extension || '');
-      needUpdate = true;
+      oldKey = genModelKey(model)
+      updateData.set('type', data.type)
+      updateData.set('pathIndex', String(data.pathIndex))
+      updateData.set('fullname', genModelFullName(data as BaseModel))
+      updateData.set('extension', data.extension || '')
+      needUpdate = true
     }
 
     if (!needUpdate) {
-      return;
+      return
     }
 
-    loading.show('updateModel');
+    loading.show('updateModel')
     try {
       const response = await request(genModelUrl(model), {
         method: 'PUT',
         body: updateData,
-      });
+      })
       if (!response.success) {
-        throw new Error(response.error || t('updateModelFailed'));
+        throw new Error(response.error || t('updateModelFailed'))
       }
       if (oldKey) {
-        store.dialog.close({ key: oldKey });
+        store.dialog.close({ key: oldKey })
       }
-      await refreshModels(data.type);
-      console.log(t('success'), t('modelUpdated', { name: data.basename }));
+      await refreshModels(data.type)
+      console.log(t('success'), t('modelUpdated', { name: data.basename }))
     } catch (error) {
-      console.error(t('error'), error.message || t('updateModelFailed'));
+      console.error(t('error'), error.message || t('updateModelFailed'))
     } finally {
-      loading.hide('updateModel');
+      loading.hide('updateModel')
     }
-  };
+  }
 
   const deleteModel = async (model: BaseModel) => {
     return new Promise((resolve) => {
-      // Simulate confirm dialog with console-based resolution
-      console.log(t('deleteAsk', [t('model').toLowerCase()]));
+      console.log(t('deleteAsk', [t('model').toLowerCase()]))
       const accept = async () => {
-        const dialogKey = genModelKey(model);
-        loading.show('deleteModel');
+        const dialogKey = genModelKey(model)
+        loading.show('deleteModel')
         try {
           const response = await request(genModelUrl(model), {
             method: 'DELETE',
-          });
+          })
           if (!response.success) {
-            throw new Error(response.error || t('deleteModelFailed'));
+            throw new Error(response.error || t('deleteModelFailed'))
           }
-          console.log(t('success'), t('modelDeleted', { name: model.basename }));
-          store.dialog.close({ key: dialogKey });
-          await refreshModels(model.type);
-          resolve(void 0);
+          console.log(t('success'), t('modelDeleted', { name: model.basename }))
+          store.dialog.close({ key: dialogKey })
+          await refreshModels(model.type)
+          resolve(void 0)
         } catch (error) {
-          console.error(t('error'), error.message || t('deleteModelFailed'));
-          resolve(void 0);
+          console.error(t('error'), error.message || t('deleteModelFailed'))
+          resolve(void 0)
         } finally {
-          loading.hide('deleteModel');
+          loading.hide('deleteModel')
         }
-      };
+      }
       const reject = () => {
-        resolve(void 0);
-      };
-      // Auto-accept for now; replace with actual confirm dialog if needed
-      accept();
-    });
-  };
+        resolve(void 0)
+      }
+      accept()
+    })
+  }
 
   function openModelDetail(model: BaseModel) {
-    const dialogKey = genModelKey(model);
-    const filename = model.basename.replace(model.extension || '', '');
+    const dialogKey = genModelKey(model)
+    const filename = model.basename.replace(model.extension || '', '')
 
     if (store.dialog.isOpen?.({ key: dialogKey })) {
-      console.warn(t('warning'), t('modelDetailsOpen'));
-      return;
+      console.warn(t('warning'), t('modelDetailsOpen'))
+      return
     }
 
     store.dialog.open({
@@ -271,55 +290,76 @@ export const useModels = defineStore('models', (store) => {
       title: filename,
       content: DialogModelDetail,
       contentProps: { model },
-    });
+    })
   }
 
   function getFullPath(model: BaseModel) {
-    const fullname = genModelFullName(model);
-    const prefixPath = folders.value[model.type]?.[model.pathIndex] || '';
-    return [prefixPath, fullname].filter(Boolean).join('/');
+    const fullname = genModelFullName(model)
+    const prefixPath = folders.value[model.type]?.[model.pathIndex] || ''
+    return [prefixPath, fullname].filter(Boolean).join('/')
   }
 
-  const handleScanUpdate = ({ task_id, file }: { task_id: string; file: Model }) => {
+  const handleScanUpdate = ({
+    task_id,
+    file,
+  }: {
+    task_id: string
+    file: Model
+  }) => {
     for (const folder in scanTasks.value) {
       if (scanTasks.value[folder].taskId === task_id) {
-        models.value[folder] = [...(models.value[folder] || []), file];
+        models.value[folder] = [...(models.value[folder] || []), file]
       }
     }
-  };
+  }
 
-  const handleScanComplete = ({ task_id, results }: { task_id: string; results: Model[] }) => {
+  const handleScanComplete = ({
+    task_id,
+    results,
+  }: {
+    task_id: string
+    results: Model[]
+  }) => {
     for (const folder in scanTasks.value) {
       if (scanTasks.value[folder].taskId === task_id) {
-        models.value[folder] = results;
-        scanTasks.value[folder].status = 'completed';
-        loading.hide(`scan-${folder}`);
+        models.value[folder] = results
+        scanTasks.value[folder].status = 'completed'
+        loading.hide(`scan-${folder}`)
       }
     }
-  };
+  }
 
-  const handleScanError = ({ task_id, error }: { task_id: string; error: string }) => {
+  const handleScanError = ({
+    task_id,
+    error,
+  }: {
+    task_id: string
+    error: string
+  }) => {
     for (const folder in scanTasks.value) {
       if (scanTasks.value[folder].taskId === task_id) {
-        scanTasks.value[folder].status = 'failed';
-        scanTasks.value[folder].error = error;
-        console.error(t('error'), t('scanFailed', { error: error || 'Unknown', folder }));
-        loading.hide(`scan-${folder}`);
+        scanTasks.value[folder].status = 'failed'
+        scanTasks.value[folder].error = error
+        console.error(
+          t('error'),
+          t('scanFailed', { error: error || 'Unknown', folder }),
+        )
+        loading.hide(`scan-${folder}`)
       }
     }
-  };
+  }
 
   onMounted(() => {
-    store.on('scan:update', handleScanUpdate);
-    store.on('scan:complete', handleScanComplete);
-    store.on('scan:error', handleScanError);
-  });
+    store.on('scan:update', handleScanUpdate)
+    store.on('scan:complete', handleScanComplete)
+    store.on('scan:error', handleScanError)
+  })
 
   onUnmounted(() => {
-    store.off('scan:update', handleScanUpdate);
-    store.off('scan:complete', handleScanComplete);
-    store.off('scan:error', handleScanError);
-  });
+    store.off('scan:update', handleScanUpdate)
+    store.off('scan:complete', handleScanComplete)
+    store.off('scan:error', handleScanError)
+  })
 
   return {
     initialized,
@@ -331,50 +371,52 @@ export const useModels = defineStore('models', (store) => {
     update: updateModel,
     openModelDetail,
     getFullPath,
-  };
-});
+  }
+})
 
 declare module 'hooks/store' {
   interface StoreProvider {
-    models: ReturnType<typeof useModels>;
+    models: ReturnType<typeof useModels>
   }
 }
 
-export const useModelFormData = (getFormData: () => BaseModel | VersionModel) => {
-  const formData = ref<BaseModel | VersionModel>(getFormData());
-  const modelData = ref<BaseModel | VersionModel>(getFormData());
+export const useModelFormData = (
+  getFormData: () => BaseModel | VersionModel,
+) => {
+  const formData = ref<BaseModel | VersionModel>(getFormData())
+  const modelData = ref<BaseModel | VersionModel>(getFormData())
 
-  type ResetCallback = () => void;
-  const resetCallback = ref<ResetCallback[]>([]);
+  type ResetCallback = () => void
+  const resetCallback = ref<ResetCallback[]>([])
 
   const registerReset = (callback: ResetCallback) => {
-    resetCallback.value.push(callback);
-  };
+    resetCallback.value.push(callback)
+  }
 
   const reset = () => {
-    formData.value = getFormData();
-    modelData.value = getFormData();
+    formData.value = getFormData()
+    modelData.value = getFormData()
     for (const callback of resetCallback.value) {
-      callback();
+      callback()
     }
-  };
+  }
 
-  type SubmitCallback = (data: WithResolved<BaseModel | VersionModel>) => void;
-  const submitCallback = ref<SubmitCallback[]>([]);
+  type SubmitCallback = (data: WithResolved<BaseModel | VersionModel>) => void
+  const submitCallback = ref<SubmitCallback[]>([])
 
   const registerSubmit = (callback: SubmitCallback) => {
-    submitCallback.value.push(callback);
-  };
+    submitCallback.value.push(callback)
+  }
 
   const submit = (): WithResolved<BaseModel | VersionModel> => {
-    const data: any = cloneDeep(toRaw(unref(formData)));
+    const data: any = cloneDeep(toRaw(unref(formData)))
     for (const callback of submitCallback.value) {
-      callback(data);
+      callback(data)
     }
-    return data;
-  };
+    return data
+  }
 
-  const metadata = ref<Record<string, any>>({});
+  const metadata = ref<Record<string, any>>({})
 
   return {
     formData,
@@ -384,81 +426,81 @@ export const useModelFormData = (getFormData: () => BaseModel | VersionModel) =>
     registerSubmit,
     submit,
     metadata,
-  };
-};
+  }
+}
 
-type ModelFormInstance = ReturnType<typeof useModelFormData>;
+type ModelFormInstance = ReturnType<typeof useModelFormData>
 
 /**
  * Model base info
  */
 const baseInfoKey = Symbol('baseInfo') as InjectionKey<
   ReturnType<typeof useModelBaseInfoEditor>
->;
+>
 
 export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
-  const { formData: model, modelData } = formInstance;
-  const { t } = useI18n();
+  const { formData: model, modelData } = formInstance
+  const { t } = useI18n()
 
-  const provideModelFolders = inject(modelFolderProvideKey);
+  const provideModelFolders = inject(modelFolderProvideKey)
   const modelFolders = computed<ModelFolder>(() => {
-    return provideModelFolders?.value ?? {};
-  });
+    return provideModelFolders?.value ?? {}
+  })
 
   const type = computed({
     get: () => {
-      return model.value.type || '';
+      return model.value.type || ''
     },
     set: (val) => {
-      model.value.type = val;
+      model.value.type = val
     },
-  });
+  })
 
   const pathIndex = computed({
     get: () => {
-      return model.value.pathIndex ?? 0;
+      return model.value.pathIndex ?? 0
     },
     set: (val) => {
-      model.value.pathIndex = val;
+      model.value.pathIndex = val
     },
-  });
+  })
 
   const subFolder = computed({
     get: () => {
-      return model.value.subFolder || '';
+      return model.value.subFolder || ''
     },
     set: (val) => {
-      model.value.subFolder = val;
+      model.value.subFolder = val
     },
-  });
+  })
 
   const extension = computed({
     get: () => {
-      return model.value.extension || '';
+      return model.value.extension || ''
     },
     set: (val) => {
-      model.value.extension = val;
+      model.value.extension = val
     },
-  });
+  })
 
   const basename = computed({
     get: () => {
-      return model.value.basename || '';
+      return model.value.basename || ''
     },
     set: (val) => {
-      model.value.basename = val;
+      model.value.basename = val
     },
-  });
+  })
 
   interface BaseInfoItem {
-    key: string;
-    display: string;
-    value: any;
+    key: string
+    display: string
+    value: any
   }
 
   interface FieldsItem {
-    key: keyof Model;
-    formatter: (val: any) => string | undefined | null;
+    key: keyof Model
+    formatter: (val: any) => string | undefined | null
   }
 
   const baseInfo = computed(() => {
@@ -473,15 +515,15 @@ export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
       {
         key: 'pathIndex',
         formatter: () => {
-          const modelType = model.value.type;
-          const pathIndex = model.value.pathIndex ?? 0;
+          const modelType = model.value.type
+          const pathIndex = model.value.pathIndex ?? 0
           if (!modelType) {
-            return t('noFolderSelected');
+            return t('noFolderSelected')
           }
-          const folders = modelFolders.value[modelType] ?? [];
+          const folders = modelFolders.value[modelType] ?? []
           return [`${folders[pathIndex] || ''}`, model.value.subFolder]
             .filter(Boolean)
-            .join('/');
+            .join('/')
         },
       },
       {
@@ -500,21 +542,21 @@ export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
         key: 'updatedAt',
         formatter: (val) => val && formatDate(val),
       },
-    ];
+    ]
 
-    const information: Record<string, BaseInfoItem> = {};
+    const information: Record<string, BaseInfoItem> = {}
     for (const item of fields) {
-      const key = item.key;
-      const value = model.value[key];
-      const display = item.formatter(value);
+      const key = item.key
+      const value = model.value[key]
+      const display = item.formatter(value)
 
       if (display) {
-        information[key] = { key, value, display };
+        information[key] = { key, value, display }
       }
     }
 
-    return information;
-  });
+    return information
+  })
 
   const result = {
     type,
@@ -524,49 +566,51 @@ export const useModelBaseInfoEditor = (formInstance: ModelFormInstance) => {
     subFolder,
     pathIndex,
     modelFolders,
-  };
+  }
 
-  provide(baseInfoKey, result);
+  provide(baseInfoKey, result)
 
-  return result;
-};
+  return result
+}
 
 export const useModelBaseInfo = () => {
-  const result = inject(baseInfoKey);
+  const result = inject(baseInfoKey)
   if (!result) {
-    throw new Error(t('baseInfoProviderMissing'));
+    throw new Error(t('baseInfoProviderMissing'))
   }
-  return result;
-};
+  return result
+}
 
 export const useModelFolder = (
   option: {
-    type?: MaybeRefOrGetter<string | undefined>;
-    models?: Ref<Model[]>; // Optional: Use external model list (e.g., from DialogScanning.vue)
+    type?: MaybeRefOrGetter<string | undefined>
+    models?: Ref<Model[]> // Optional: Use external model list (e.g., from DialogScanning.vue)
   } = {},
 ) => {
-  const { data: storeModels, folders: modelFolders } = useModels();
+  const { data: storeModels, folders: modelFolders } = useModels()
 
   const pathOptions = computed(() => {
-    const type = toValue(option.type);
+    const type = toValue(option.type)
     if (!type) {
-      return [];
+      return []
     }
 
-    const folderItems = cloneDeep(option.models?.value || storeModels.value[type] || []);
-    const pureFolders = folderItems.filter((item) => item.isFolder);
-    pureFolders.sort((a, b) => a.basename.localeCompare(b.basename));
+    const folderItems = cloneDeep(
+      option.models?.value || storeModels.value[type] || [],
+    )
+    const pureFolders = folderItems.filter((item) => item.isFolder)
+    pureFolders.sort((a, b) => a.basename.localeCompare(b.basename))
 
-    const folders = modelFolders.value[type] ?? [];
+    const folders = modelFolders.value[type] ?? []
 
-    const root: TreeNode[] = [];
+    const root: TreeNode[] = []
 
     for (const [index, folder] of folders.entries()) {
       const pathIndexItem: TreeNode = {
         key: folder,
         label: folder,
         children: [],
-      };
+      }
 
       const items = pureFolders
         .filter((item) => item.pathIndex === index)
@@ -575,124 +619,124 @@ export const useModelFolder = (
             key: `${folder}/${genModelFullName(item)}`,
             label: item.basename,
             data: item,
-          };
-          return node;
-        });
-      const itemMap = Object.fromEntries(items.map((item) => [item.key, item]));
+          }
+          return node
+        })
+      const itemMap = Object.fromEntries(items.map((item) => [item.key, item]))
 
       for (const item of items) {
-        const key = item.key;
-        const parentKey = key.split('/').slice(0, -1).join('/');
+        const key = item.key
+        const parentKey = key.split('/').slice(0, -1).join('/')
 
         if (parentKey === folder) {
-          pathIndexItem.children!.push(item);
-          continue;
+          pathIndexItem.children!.push(item)
+          continue
         }
 
-        const parentItem = itemMap[parentKey];
+        const parentItem = itemMap[parentKey]
         if (parentItem) {
-          parentItem.children ??= [];
-          parentItem.children.push(item);
+          parentItem.children ??= []
+          parentItem.children.push(item)
         }
       }
 
-      root.push(pathIndexItem);
+      root.push(pathIndexItem)
     }
 
-    return root;
-  });
+    return root
+  })
 
   return {
     pathOptions,
-  };
-};
+  }
+}
 
 /**
  * Editable preview image.
  */
 const previewKey = Symbol('preview') as InjectionKey<
   ReturnType<typeof useModelPreviewEditor>
->;
+>
 
-const PREVIEW_TYPE_OPTIONS = ['default', 'network', 'local', 'none'] as const;
+const PREVIEW_TYPE_OPTIONS = ['default', 'network', 'local', 'none'] as const
 
 export const useModelPreviewEditor = (formInstance: ModelFormInstance) => {
-  const { formData: model, registerReset, registerSubmit } = formInstance;
-  const { t } = useI18n();
+  const { formData: model, registerReset, registerSubmit } = formInstance
+  const { t } = useI18n()
 
-  const typeOptions = PREVIEW_TYPE_OPTIONS;
-  const currentType = ref<typeof PREVIEW_TYPE_OPTIONS[number]>('default');
+  const typeOptions = PREVIEW_TYPE_OPTIONS
+  const currentType = ref<(typeof PREVIEW_TYPE_OPTIONS)[number]>('default')
 
   const defaultContent = computed(() => {
-    return model.value.preview ? castArray(model.value.preview) : [];
-  });
-  const defaultContentPage = ref(0);
+    return model.value.preview ? castArray(model.value.preview) : []
+  })
+  const defaultContentPage = ref(0)
 
-  const networkContent = ref<string | null>(null);
+  const networkContent = ref<string | null>(null)
 
-  const localContent = ref<string | null>(null);
+  const localContent = ref<string | null>(null)
   const updateLocalContent = async (event: SelectEvent) => {
-    const { files } = event;
-    localContent.value = files[0].objectURL;
-  };
+    const { files } = event
+    localContent.value = files[0].objectURL
+  }
 
   const noPreviewContent = computed(() => {
-    const folder = model.value.type || 'unknown';
-    return `/model-manager/preview/${folder}/0/no-preview.png`;
-  });
+    const folder = model.value.type || 'unknown'
+    return `/preview/${folder}/0/no-preview.png` // Updated to remove /model-manager
+  })
 
   const preview = computed({
     get: () => {
-      let content: string | null | undefined;
+      let content: string | null | undefined
 
       switch (currentType.value) {
         case 'default':
-          content = defaultContent.value[defaultContentPage.value];
-          break;
+          content = defaultContent.value[defaultContentPage.value]
+          break
         case 'network':
-          content = networkContent.value;
-          break;
+          content = networkContent.value
+          break
         case 'local':
-          content = localContent.value;
-          break;
+          content = localContent.value
+          break
         default:
-          content = null;
-          break;
+          content = null
+          break
       }
 
-      return content;
+      return content
     },
     set: (val) => {
       if (currentType.value === 'network') {
-        networkContent.value = val;
+        networkContent.value = val
       } else if (currentType.value === 'local') {
-        localContent.value = val;
+        localContent.value = val
       }
     },
-  });
+  })
 
   const previewType = computed({
     get: () => {
-      return model.value.previewType || 'none';
+      return model.value.previewType || 'none'
     },
     set: (val: 'image' | 'video' | 'none') => {
-      model.value.previewType = val;
+      model.value.previewType = val
     },
-  });
+  })
 
   onMounted(() => {
     registerReset(() => {
-      currentType.value = 'default';
-      defaultContentPage.value = 0;
-      networkContent.value = null;
-      localContent.value = null;
-    });
+      currentType.value = 'default'
+      defaultContentPage.value = 0
+      networkContent.value = null
+      localContent.value = null
+    })
 
     registerSubmit((data) => {
-      data.preview = preview.value;
-      data.previewType = previewType.value;
-    });
-  });
+      data.preview = preview.value
+      data.previewType = previewType.value
+    })
+  })
 
   const result = {
     preview,
@@ -705,113 +749,113 @@ export const useModelPreviewEditor = (formInstance: ModelFormInstance) => {
     localContent,
     updateLocalContent,
     noPreviewContent,
-  };
+  }
 
-  provide(previewKey, result);
+  provide(previewKey, result)
 
-  return result;
-};
+  return result
+}
 
 export const useModelPreview = () => {
-  const result = inject(previewKey);
+  const result = inject(previewKey)
   if (!result) {
-    throw new Error(t('previewProviderMissing'));
+    throw new Error(t('previewProviderMissing'))
   }
-  return result;
-};
+  return result
+}
 
 /**
  * Model description
  */
 const descriptionKey = Symbol('description') as InjectionKey<
   ReturnType<typeof useModelDescriptionEditor>
->;
+>
 
 export const useModelDescriptionEditor = (formInstance: ModelFormInstance) => {
-  const { formData: model, metadata } = formInstance;
-  const { t } = useI18n();
+  const { formData: model, metadata } = formInstance
+  const { t } = useI18n()
 
-  const md = useMarkdown({ metadata: metadata.value });
+  const md = useMarkdown({ metadata: metadata.value })
 
   const description = computed({
     get: () => {
-      return model.value.description || '';
+      return model.value.description || ''
     },
     set: (val) => {
-      model.value.description = val;
+      model.value.description = val
     },
-  });
+  })
 
   const renderedDescription = computed(() => {
-    return description.value ? md.render(description.value) : '';
-  });
+    return description.value ? md.render(description.value) : ''
+  })
 
-  const result = { renderedDescription, description };
+  const result = { renderedDescription, description }
 
-  provide(descriptionKey, result);
+  provide(descriptionKey, result)
 
-  return result;
-};
+  return result
+}
 
 export const useModelDescription = () => {
-  const result = inject(descriptionKey);
+  const result = inject(descriptionKey)
   if (!result) {
-    throw new Error(t('descriptionProviderMissing'));
+    throw new Error(t('descriptionProviderMissing'))
   }
-  return result;
-};
+  return result
+}
 
 /**
  * Model metadata
  */
 const metadataKey = Symbol('metadata') as InjectionKey<
   ReturnType<typeof useModelMetadataEditor>
->;
+>
 
 export const useModelMetadataEditor = (formInstance: ModelFormInstance) => {
-  const { formData: model } = formInstance;
-  const { t } = useI18n();
+  const { formData: model } = formInstance
+  const { t } = useI18n()
 
   const metadata = computed(() => {
-    return model.value.metadata || {};
-  });
+    return model.value.metadata || {}
+  })
 
-  const result = { metadata };
+  const result = { metadata }
 
-  provide(metadataKey, result);
+  provide(metadataKey, result)
 
-  return result;
-};
+  return result
+}
 
 export const useModelMetadata = () => {
-  const result = inject(metadataKey);
+  const result = inject(metadataKey)
   if (!result) {
-    throw new Error(t('metadataProviderMissing'));
+    throw new Error(t('metadataProviderMissing'))
   }
-  return result;
-};
+  return result
+}
 
 export const useModelNodeAction = () => {
-  const { t } = useI18n();
+  const { t } = useI18n()
 
   const createNode = (model: BaseModel, options: Record<string, any> = {}) => {
-    const nodeType = resolveModelTypeLoader(model.type);
+    const nodeType = resolveModelTypeLoader(model.type)
     if (!nodeType) {
-      throw new Error(t('unSupportedModelType', [model.type]));
+      throw new Error(t('unSupportedModelType', [model.type]))
     }
 
-    const node = window.LiteGraph.createNode(nodeType, null, options);
-    const widgetIndex = node.widgets.findIndex((w) => w.type === 'combo');
+    const node = window.LiteGraph.createNode(nodeType, null, options)
+    const widgetIndex = node.widgets.findIndex((w) => w.type === 'combo')
     if (widgetIndex > -1) {
-      node.widgets[widgetIndex].value = genModelFullName(model);
+      node.widgets[widgetIndex].value = genModelFullName(model)
     }
-    return node;
-  };
+    return node
+  }
 
   const dragToAddModelNode = (model: BaseModel, event: DragEvent) => {
     try {
-      const removeEmbeddingExtension = true;
-      const strictDragToAdd = false;
+      const removeEmbeddingExtension = true
+      const strictDragToAdd = false
 
       ModelGrid.dragAddModel(
         event,
@@ -819,59 +863,59 @@ export const useModelNodeAction = () => {
         genModelFullName(model),
         removeEmbeddingExtension,
         strictDragToAdd,
-      );
+      )
     } catch (error) {
-      console.error(t('error'), error.message || t('dragAddModelFailed'));
+      console.error(t('error'), error.message || t('dragAddModelFailed'))
     }
-  };
+  }
 
   const addModelNode = (model: BaseModel) => {
     try {
-      const selectedNodes = app.canvas.selected_nodes;
-      const firstSelectedNode = Object.values(selectedNodes)[0];
-      const offset = 25;
+      const selectedNodes = app.canvas.selected_nodes
+      const firstSelectedNode = Object.values(selectedNodes)[0]
+      const offset = 25
       const pos = firstSelectedNode
         ? [firstSelectedNode.pos[0] + offset, firstSelectedNode.pos[1] + offset]
-        : app.canvas.canvas_mouse;
-      const node = createNode(model, { pos });
-      app.graph.add(node);
-      app.canvas.selectNode(node);
+        : app.canvas.canvas_mouse
+      const node = createNode(model, { pos })
+      app.graph.add(node)
+      app.canvas.selectNode(node)
     } catch (error) {
-      console.error(t('error'), error.message || t('addModelNodeFailed'));
+      console.error(t('error'), error.message || t('addModelNodeFailed'))
     }
-  };
+  }
 
   const copyModelNode = (model: BaseModel) => {
     try {
-      const node = createNode(model);
-      app.canvas.copyToClipboard([node]);
-      console.log(t('success'), t('modelCopied'));
+      const node = createNode(model)
+      app.canvas.copyToClipboard([node])
+      console.log(t('success'), t('modelCopied'))
     } catch (error) {
-      console.error(t('error'), error.message || t('copyModelFailed'));
+      console.error(t('error'), error.message || t('copyModelFailed'))
     }
-  };
+  }
 
   const loadPreviewWorkflow = async (model: BaseModel) => {
     try {
-      const previewUrl = model.preview as string;
+      const previewUrl = model.preview as string
       if (!previewUrl) {
-        throw new Error(t('noPreviewAvailable'));
+        throw new Error(t('noPreviewAvailable'))
       }
-      const response = await fetch(previewUrl);
-      const data = await response.blob();
-      const type = data.type;
-      const extension = type.split('/').pop();
-      const file = new File([data], `${model.basename}.${extension}`, { type });
-      app.handleFile(file);
+      const response = await fetch(previewUrl)
+      const data = await response.blob()
+      const type = data.type
+      const extension = type.split('/').pop()
+      const file = new File([data], `${model.basename}.${extension}`, { type })
+      app.handleFile(file)
     } catch (error) {
-      console.error(t('error'), error.message || t('loadPreviewFailed'));
+      console.error(t('error'), error.message || t('loadPreviewFailed'))
     }
-  };
+  }
 
   return {
     addModelNode,
     dragToAddModelNode,
     copyModelNode,
     loadPreviewWorkflow,
-  };
-};
+  }
+}

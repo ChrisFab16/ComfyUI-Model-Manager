@@ -1,21 +1,24 @@
 // src/hooks/request.ts
-import { useLoading } from 'hooks/loading';
-import { api } from 'scripts/comfyAPI';
-import { onMounted, ref } from 'vue';
+import { useLoading } from 'hooks/loading'
+import { api } from 'scripts/comfyAPI'
+import { onMounted, ref } from 'vue'
 
 interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error: string | null;
-  status: number;
+  success: boolean
+  data: T
+  error: string | null
+  status: number
 }
 
 export const request = async <T = any>(
   url: string,
   options: RequestInit & { modelManagerPrefix?: boolean } = {},
 ): Promise<ApiResponse<T>> => {
-  const { modelManagerPrefix = true, ...fetchOptions } = options;
-  const requestUrl = modelManagerPrefix ? `/model-manager${url}` : url;
+  const { modelManagerPrefix = true, ...fetchOptions } = options
+  // Always prepend /api, with /model-manager for plugin routes
+  const requestUrl = modelManagerPrefix
+    ? `/api/model-manager${url}`
+    : `/api${url}`
 
   try {
     const response = await api.fetchApi(requestUrl, {
@@ -27,138 +30,142 @@ export const request = async <T = any>(
             : 'application/json',
         ...fetchOptions.headers,
       },
-    });
+    })
 
-    const resData = await response.json();
+    const resData = await response.json()
     return {
       success: resData.success ?? response.ok,
       data: resData.data ?? resData,
       error: resData.error ?? (response.ok ? null : response.statusText),
       status: response.status,
-    };
+    }
   } catch (error) {
-    const errorMessage = mapErrorMessage(error.message || 'Request failed');
-    console.error('Error', errorMessage);
+    const errorMessage = mapErrorMessage(error.message || 'Request failed')
+    console.error('Error', errorMessage)
     return {
       success: false,
       data: null,
       error: errorMessage,
       status: 0,
-    };
+    }
   }
-};
+}
 
 // Map common backend errors to user-friendly messages
 const mapErrorMessage = (error: string): string => {
   switch (true) {
     case error.includes('File already exists'):
-      return 'The file already exists in the target location.';
+      return 'The file already exists in the target location.'
     case error.includes('Authentication required'):
-      return 'Authentication is required. Please set your API key.';
+      return 'Authentication is required. Please set your API key.'
     case error.includes('Invalid URL'):
-      return 'The provided URL is invalid.';
+      return 'The provided URL is invalid.'
     case error.includes('Not found'):
-      return 'The requested resource was not found.';
+      return 'The requested resource was not found.'
     case error.includes('Network error'):
-      return 'A network error occurred. Please check your connection.';
+      return 'A network error occurred. Please check your connection.'
     default:
-      return error || 'An unexpected error occurred.';
+      return error || 'An unexpected error occurred.'
   }
-};
+}
 
 export interface RequestOptions<T> {
-  method?: RequestInit['method'];
-  headers?: RequestInit['headers'];
-  defaultParams?: Record<string, any>;
-  defaultValue?: any;
-  postData?: (data: T) => T;
-  manual?: boolean;
-  modelManagerPrefix?: boolean;
-  loadingKey?: string;
+  method?: RequestInit['method']
+  headers?: RequestInit['headers']
+  defaultParams?: Record<string, any>
+  defaultValue?: any
+  postData?: (data: T) => T
+  manual?: boolean
+  modelManagerPrefix?: boolean
+  loadingKey?: string
 }
 
 export const useRequest = <T = any>(
   url: string,
   options: RequestOptions<T> = {},
 ) => {
-  const loading = useLoading();
-  const postData = options.postData ?? ((data: T) => data);
+  const loading = useLoading()
+  const postData = options.postData ?? ((data: T) => data)
 
-  const data = ref<T>(options.defaultValue);
-  const lastParams = ref();
-  const error = ref<string | null>(null);
+  const data = ref<T>(options.defaultValue)
+  const lastParams = ref()
+  const error = ref<string | null>(null)
 
   const fetch = async (
     params: Record<string, any> = options.defaultParams ?? {},
     fetchOptions: RequestInit = {},
   ) => {
-    const loadingKey = options.loadingKey || url;
-    loading.show(loadingKey);
-    error.value = null;
+    const loadingKey = options.loadingKey || url
+    loading.show(loadingKey)
+    error.value = null
 
-    lastParams.value = params;
+    lastParams.value = params
 
-    let requestUrl = url;
+    let requestUrl = url
     const requestOptions: RequestInit = {
       method: options.method || 'GET',
       headers: options.headers,
       ...fetchOptions,
-    };
-    const requestParams = { ...params };
+    }
+    const requestParams = { ...params }
 
     // Handle URL template parameters (e.g., /download/{taskId})
-    const templatePattern = /\{(.*?)\}/g;
-    const urlParamKeyMatches = requestUrl.matchAll(templatePattern);
+    const templatePattern = /\{(.*?)\}/g
+    const urlParamKeyMatches = requestUrl.matchAll(templatePattern)
     for (const urlParamKey of urlParamKeyMatches) {
-      const [match, paramKey] = urlParamKey;
+      const [match, paramKey] = urlParamKey
       if (paramKey in requestParams) {
-        const paramValue = requestParams[paramKey];
-        delete requestParams[paramKey];
-        requestUrl = requestUrl.replace(match, paramValue);
+        const paramValue = requestParams[paramKey]
+        delete requestParams[paramKey]
+        requestUrl = requestUrl.replace(match, paramValue)
       }
     }
 
     // Set body for non-GET requests
-    if (requestOptions.method !== 'GET' && requestParams && !(requestOptions.body instanceof FormData)) {
-      requestOptions.body = JSON.stringify(requestParams);
+    if (
+      requestOptions.method !== 'GET' &&
+      requestParams &&
+      !(requestOptions.body instanceof FormData)
+    ) {
+      requestOptions.body = JSON.stringify(requestParams)
     }
 
     try {
       const response = await request<T>(requestUrl, {
         ...requestOptions,
         modelManagerPrefix: options.modelManagerPrefix ?? true,
-      });
+      })
 
       if (response.success) {
-        data.value = postData(response.data);
+        data.value = postData(response.data)
       } else {
-        error.value = mapErrorMessage(response.error || 'Request failed');
-        console.error('Error', error.value);
+        error.value = mapErrorMessage(response.error || 'Request failed')
+        console.error('Error', error.value)
       }
-      return response;
+      return response
     } catch (err) {
-      error.value = mapErrorMessage(err.message || 'Request failed');
-      console.error('Error', error.value);
+      error.value = mapErrorMessage(err.message || 'Request failed')
+      console.error('Error', error.value)
       return {
         success: false,
         data: null,
         error: error.value,
         status: 0,
-      };
+      }
     } finally {
-      loading.hide(loadingKey);
+      loading.hide(loadingKey)
     }
-  };
+  }
 
   onMounted(() => {
     if (!options.manual) {
-      fetch();
+      fetch()
     }
-  });
+  })
 
   const refresh = async () => {
-    return fetch(lastParams.value);
-  };
+    return fetch(lastParams.value)
+  }
 
-  return { data, error, refresh, fetch };
-};
+  return { data, error, refresh, fetch }
+}
