@@ -27,6 +27,12 @@ const { toast } = useToast()
 const firstOpenManager = ref(true)
 
 onMounted(() => {
+  console.log('App.vue mounted')
+  console.log('window.comfyAPI:', !!window.comfyAPI)
+  console.log('app.ui:', !!app.ui)
+  console.log('app.ui.menuContainer:', !!app.ui?.menuContainer)
+  console.log('app.menu.settingsGroup:', !!app.menu?.settingsGroup)
+
   const refreshModelsAndConfig = async () => {
     await Promise.all([models.refresh(true)])
     toast.add({
@@ -42,10 +48,7 @@ onMounted(() => {
       title: t('batchScanModelInformation'),
       content: DialogScanning,
       modal: true,
-      defaultSize: {
-        width: 680,
-        height: 490,
-      },
+      defaultSize: { width: 680, height: 490 },
     })
   }
 
@@ -65,6 +68,7 @@ onMounted(() => {
   }
 
   const openManagerDialog = () => {
+    console.log('Opening Model Manager dialog')
     const { cardWidth, gutter, aspect, flat } = config
 
     if (firstOpenManager.value) {
@@ -99,21 +103,31 @@ onMounted(() => {
     })
   }
 
-  app.ui?.menuContainer?.appendChild(
-    $el('button', {
-      id: 'comfyui-model-manager-button',
-      textContent: t('modelManager'),
-      onclick: openManagerDialog,
-    }),
-  )
+  if (app.ui?.menuContainer) {
+    app.ui.menuContainer.appendChild(
+      $el('button', {
+        id: 'comfyui-model-manager-button',
+        textContent: t('modelManager'),
+        onclick: openManagerDialog,
+      }),
+    )
+    console.log('Added menuContainer button')
+  } else {
+    console.error('Failed to add menuContainer button: menuContainer not found')
+  }
 
-  app.menu?.settingsGroup.append(
-    new ComfyButton({
-      icon: 'folder-search',
-      tooltip: t('openModelManager'),
-      content: t('modelManager'),
-      action: openManagerDialog,
-    }),
-  )
+  if (app.menu?.settingsGroup) {
+    app.menu.settingsGroup.append(
+      new ComfyButton({
+        icon: 'folder-search',
+        tooltip: t('openModelManager'),
+        content: t('modelManager'),
+        action: openManagerDialog,
+      }),
+    )
+    console.log('Added settingsGroup button')
+  } else {
+    console.error('Failed to add settingsGroup button: settingsGroup not found')
+  }
 })
 </script>

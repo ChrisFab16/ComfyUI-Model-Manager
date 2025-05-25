@@ -15,10 +15,15 @@ export const request = async <T = any>(
   options: RequestInit & { modelManagerPrefix?: boolean } = {},
 ): Promise<ApiResponse<T>> => {
   const { modelManagerPrefix = true, ...fetchOptions } = options
-  // Always prepend /api, with /model-manager for plugin routes
+  console.log('request: url=', url, 'modelManagerPrefix=', modelManagerPrefix)
+  if (!url) {
+    console.error('request: URL is undefined or empty')
+    throw new Error('Request URL is undefined')
+  }
   const requestUrl = modelManagerPrefix
-    ? `/api/model-manager${url}`
-    : `/api${url}`
+    ? `/model-manager${url.startsWith('/') ? url : '/' + url}`
+    : `/api${url.startsWith('/') ? url : '/' + url}`
+  console.log('request: requestUrl=', requestUrl)
 
   try {
     const response = await api.fetchApi(requestUrl, {
@@ -41,7 +46,7 @@ export const request = async <T = any>(
     }
   } catch (error) {
     const errorMessage = mapErrorMessage(error.message || 'Request failed')
-    console.error('Error', errorMessage)
+    console.error('request: error=', errorMessage)
     return {
       success: false,
       data: null,
@@ -51,7 +56,6 @@ export const request = async <T = any>(
   }
 }
 
-// Map common backend errors to user-friendly messages
 const mapErrorMessage = (error: string): string => {
   switch (true) {
     case error.includes('File already exists'):
@@ -95,6 +99,11 @@ export const useRequest = <T = any>(
     params: Record<string, any> = options.defaultParams ?? {},
     fetchOptions: RequestInit = {},
   ) => {
+    console.log('useRequest: fetch url=', url, 'params=', params)
+    if (!url) {
+      console.error('useRequest: Skipping fetch due to undefined url')
+      return { success: false, data: null, error: 'Undefined URL', status: 0 }
+    }
     const loadingKey = options.loadingKey || url
     loading.show(loadingKey)
     error.value = null
@@ -109,7 +118,6 @@ export const useRequest = <T = any>(
     }
     const requestParams = { ...params }
 
-    // Handle URL template parameters (e.g., /download/{taskId})
     const templatePattern = /\{(.*?)\}/g
     const urlParamKeyMatches = requestUrl.matchAll(templatePattern)
     for (const urlParamKey of urlParamKeyMatches) {
@@ -121,7 +129,6 @@ export const useRequest = <T = any>(
       }
     }
 
-    // Set body for non-GET requests
     if (
       requestOptions.method !== 'GET' &&
       requestParams &&
@@ -140,12 +147,12 @@ export const useRequest = <T = any>(
         data.value = postData(response.data)
       } else {
         error.value = mapErrorMessage(response.error || 'Request failed')
-        console.error('Error', error.value)
+        console.error('useRequest: error=', error.value)
       }
       return response
     } catch (err) {
       error.value = mapErrorMessage(err.message || 'Request failed')
-      console.error('Error', error.value)
+      console.error('useRequest: error=', err.message)
       return {
         success: false,
         data: null,
@@ -158,12 +165,21 @@ export const useRequest = <T = any>(
   }
 
   onMounted(() => {
-    if (!options.manual) {
+    if (!options.manual && url) {
+      console.log('useRequest: auto-fetch url=', url)
       fetch()
+    } else {
+      console.log(
+        'useRequest: Skipping auto-fetch, url=',
+        url,
+        'manual=',
+        options.manual,
+      )
     }
   })
 
   const refresh = async () => {
+    console.log('useRequest: refresh url=', url)
     return fetch(lastParams.value)
   }
 

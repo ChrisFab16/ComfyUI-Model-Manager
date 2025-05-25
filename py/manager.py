@@ -1,36 +1,39 @@
 import os
 import folder_paths
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from aiohttp import web
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from . import utils
 import logging
+import asyncio
+import threading
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.info("ModelManager: Initializing extension")  # Debug log
+
+app = FastAPI()  # FastAPI instance
+web_dir = os.path.join(os.path.dirname(__file__), "..", "web")  # Absolute path to web/
+app.mount("/model-manager", StaticFiles(directory=web_dir), name="model-manager")  # Mount web/ folder
 
 class ModelManager:
     def __init__(self):
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.lock = threading.Lock()
         self.running_tasks = {}  # task_id -> {status, results, error}
+        self.loop = asyncio.get_event_loop()
 
     def add_routes(self, routes):
         @routes.get("/model-manager/base-folders")
         @utils.deprecated(reason="Use `/model-manager/models` instead.")
         async def get_model_paths(request):
-            """
-            Returns the base folders for models.
-            """
             model_base_paths = utils.resolve_model_base_paths()
             return web.json_response({"success": True, "data": model_base_paths})
 
         @routes.get("/model-manager/models")
         async def get_folders(request):
-            """
-            Returns the base folders for models.
-            """
             try:
                 result = utils.resolve_model_base_paths()
                 logger.info(f"Returning folders: {result}")
@@ -42,9 +45,6 @@ class ModelManager:
 
         @routes.get("/model-manager/scan/start")
         async def start_scan(request):
-            """
-            Starts a model scan in the background and returns a task ID.
-            """
             folder = request.query.get("folder", None)
             if not folder:
                 return web.json_response({"success": False, "error": "Folder parameter is required"})
@@ -74,9 +74,6 @@ class ModelManager:
 
         @routes.get("/model-manager/scan/status/{task_id}")
         async def get_scan_status(request):
-            """
-            Returns the status and partial results of a scan task.
-            """
             task_id = request.match_info.get("task_id", None)
             with self.lock:
                 task = self.running_tasks.get(task_id, {"status": "not_found", "results": [], "error": None})
@@ -84,9 +81,6 @@ class ModelManager:
 
         @routes.get("/model-manager/models/{folder}")
         async def get_folder_models(request):
-            """
-            Returns models in a folder (synchronous, kept for compatibility).
-            """
             try:
                 folder = request.match_info.get("folder", None)
                 results = await self.scan_models(folder, request)
@@ -98,15 +92,11 @@ class ModelManager:
 
         @routes.get("/model-manager/model/{type}/{index}/{filename:.*}")
         async def get_model_info(request):
-            """
-            Get the information of the specified model.
-            """
             model_type = request.match_info.get("type", None)
             path_index = int(request.match_info.get("index", None))
             filename = request.match_info.get("filename", None)
 
             try:
-                # Normalize model_type (e.g., checkpoint -> checkpoints)
                 model_type = model_type + 's' if model_type == 'checkpoint' else model_type
                 model_path = utils.get_valid_full_path(model_type, path_index, filename)
                 logger.info(f"Get model info - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}, Path: {model_path}")
@@ -121,21 +111,10 @@ class ModelManager:
 
         @routes.put("/model-manager/model/{type}/{index}/{filename:.*}")
         async def update_model(request):
-            """
-            Update model information.
-            request body: x-www-form-urlencoded
-            - previewFile: preview file.
-            - description: description.
-            - type: model type.
-            - pathIndex: index of the model folders.
-            - fullname: filename that relative to the model folder.
-            All fields are optional, but type, pathIndex and fullname must appear together.
-            """
             model_type = request.match_info.get("type", None)
             path_index = int(request.match_info.get("index", None))
             filename = request.match_info.get("filename", None)
 
-            # Normalize model_type (e.g., checkpoint -> checkpoints)
             model_type = model_type + 's' if model_type == 'checkpoint' else model_type
             logger.info(f"Update model - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}")
 
@@ -156,14 +135,10 @@ class ModelManager:
 
         @routes.delete("/model-manager/model/{type}/{index}/{filename:.*}")
         async def delete_model(request):
-            """
-            Delete model.
-            """
             model_type = request.match_info.get("type", None)
             path_index = int(request.match_info.get("index", None))
             filename = request.match_info.get("filename", None)
 
-            # Normalize model_type (e.g., checkpoint -> checkpoints)
             model_type = model_type + 's' if model_type == 'checkpoint' else model_type
             logger.info(f"Delete model - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}")
 
@@ -179,16 +154,26 @@ class ModelManager:
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
+        @routes.get("/model-manager/download/status")
+        async def get_download_tasks(request):
+            with self.lock:
+                tasks = [
+                    {
+                        "taskId": task_id,
+                        "status": task["status"],
+                        "fullname": task["results"].get("fullname", "Unknown") if task["results"] else "Unknown",
+                        "downloadedSize": task["results"].get("downloadedSize", 0) if task["results"] else 0,
+                        "totalSize": task["results"].get("totalSize", 0) if task["results"] else 0,
+                        "bps": task["results"].get("bps", 0) if task["results"] else 0,
+                        "error": task["error"],
+                    }
+                    for task_id, task in self.running_tasks.items()
+                    if task_id.startswith("download_")
+                ]
+            return web.json_response({"success": True, "data": tasks})
+
         @routes.post("/model-manager/download")
         async def download_model(request):
-            """
-            Start a model download task.
-            request body: x-www-form-urlencoded
-            - type: model type (e.g., checkpoints)
-            - pathIndex: index of the model folder
-            - fullname: filename relative to the model folder
-            - url: download URL (optional)
-            """
             try:
                 model_data = await request.post()
                 model_data = dict(model_data)
@@ -198,7 +183,6 @@ class ModelManager:
                 fullname = model_data.get("fullname")
                 url = model_data.get("url")
 
-                # Validate inputs
                 if not model_type:
                     raise ValueError("Model type is required")
                 model_type = model_type + 's' if model_type == 'checkpoint' else model_type
@@ -215,27 +199,40 @@ class ModelManager:
                 if url and not isinstance(url, str):
                     raise ValueError("Invalid URL")
 
-                # Resolve model path
                 model_path = utils.get_full_path(model_type, path_index, fullname)
                 if os.path.exists(model_path):
                     raise ValueError(f"Model already exists at {model_path}")
 
-                # Create download task
                 task_id = f"download_{model_type}_{path_index}_{id(request)}"
                 with self.lock:
                     if task_id in self.running_tasks:
                         return web.json_response({"success": True, "task_id": task_id, "status": "running"})
-                    self.running_tasks[task_id] = {"status": "running", "results": [], "error": None}
+                    self.running_tasks[task_id] = {
+                        "status": "running",
+                        "results": {"fullname": fullname, "downloadedSize": 0, "totalSize": 0, "bps": 0},
+                        "error": None
+                    }
 
                 async def download_task():
                     try:
-                        # Simulate download initiation (integrate with download.py's task system)
                         logger.info(f"Starting download task: {task_id}, URL: {url}, Path: {model_path}")
-                        # Placeholder: Implement actual download logic or call download.py's download function
-                        # For now, simulate success
+                        # Placeholder: Implement actual download logic with progress updates
+                        for i in range(1, 4):  # Simulate progress
+                            await asyncio.sleep(1)
+                            with self.lock:
+                                self.running_tasks[task_id]["results"]["downloadedSize"] = i * 100
+                                self.running_tasks[task_id]["results"]["totalSize"] = 300
+                                self.running_tasks[task_id]["results"]["bps"] = 100
+                                await utils.send_json("update_download_task", {
+                                    "task_id": task_id,
+                                    "fullname": fullname,
+                                    "downloadedSize": i * 100,
+                                    "totalSize": 300,
+                                    "bps": 100
+                                })
                         with self.lock:
                             self.running_tasks[task_id]["status"] = "completed"
-                            self.running_tasks[task_id]["results"] = {"path": model_path}
+                            self.running_tasks[task_id]["results"] = {"path": model_path, "fullname": fullname}
                             await utils.send_json("complete_download_task", {"task_id": task_id, "path": model_path})
                     except Exception as e:
                         with self.lock:
@@ -354,7 +351,6 @@ class ModelManager:
             fullname = model_data.get("fullname", None)
             if model_type is None or path_index is None or fullname is None:
                 raise RuntimeError("Invalid type or pathIndex or fullname")
-            # Normalize model_type for rename
             model_type = model_type + 's' if model_type == 'checkpoint' else model_type
             new_model_path = utils.get_full_path(model_type, path_index, fullname)
             utils.rename_model(model_path, new_model_path)
@@ -368,3 +364,13 @@ class ModelManager:
         model_descriptions = utils.get_model_all_descriptions(model_path)
         for description in model_descriptions:
             os.remove(utils.join_path(model_dirname, description))
+
+model_manager = ModelManager()
+
+def get_instance():
+    return model_manager
+
+# Integration with ComfyUI
+import server
+routes = server.PromptServer.instance.routes
+model_manager.add_routes(routes)
