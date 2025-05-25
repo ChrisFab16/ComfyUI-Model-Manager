@@ -8,6 +8,7 @@ from . import utils
 import logging
 import asyncio
 import threading
+import functools
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -21,9 +22,9 @@ app.mount("/model-manager", StaticFiles(directory=web_dir), name="model-manager"
 class ModelManager:
     def __init__(self):
         self.executor = ThreadPoolExecutor(max_workers=4)
-        self.lock = threading.Lock()
+        self.lock = asyncio.Lock()  # Use async lock instead of threading lock
         self.running_tasks = {}  # task_id -> {status, results, error}
-        self.loop = asyncio.get_event_loop()
+        self._shutdown = False
 
     def add_routes(self, routes):
         @routes.get("/model-manager/base-folders")
@@ -50,32 +51,20 @@ class ModelManager:
                 return web.json_response({"success": False, "error": "Folder parameter is required"})
             
             task_id = f"scan_{folder}_{id(request)}"
-            with self.lock:
+            async with self.lock:
                 if task_id in self.running_tasks:
                     return web.json_response({"success": True, "task_id": task_id, "status": "running"})
 
                 self.running_tasks[task_id] = {"status": "running", "results": [], "error": None}
 
-            async def scan_task():
-                try:
-                    results = await self.scan_models(folder, request, task_id)
-                    with self.lock:
-                        self.running_tasks[task_id]["results"] = results
-                        self.running_tasks[task_id]["status"] = "completed"
-                        await utils.send_json("complete_scan_task", {"task_id": task_id, "results": results})
-                except Exception as e:
-                    with self.lock:
-                        self.running_tasks[task_id]["status"] = "failed"
-                        self.running_tasks[task_id]["error"] = str(e)
-                        await utils.send_json("error_scan_task", {"task_id": task_id, "error": str(e)})
-
-            self.executor.submit(lambda: self.loop.run_until_complete(scan_task()))
+            # Create scan task properly without blocking
+            asyncio.create_task(self._run_scan_task(folder, request, task_id))
             return web.json_response({"success": True, "task_id": task_id, "status": "started"})
 
         @routes.get("/model-manager/scan/status/{task_id}")
         async def get_scan_status(request):
             task_id = request.match_info.get("task_id", None)
-            with self.lock:
+            async with self.lock:
                 task = self.running_tasks.get(task_id, {"status": "not_found", "results": [], "error": None})
             return web.json_response({"success": True, "status": task["status"], "data": task["results"], "error": task["error"]})
 
@@ -102,7 +91,10 @@ class ModelManager:
                 logger.info(f"Get model info - Type: {model_type}, PathIndex: {path_index}, Filename: {filename}, Path: {model_path}")
                 if model_path is None:
                     raise RuntimeError(f"File {filename} not found")
-                result = self.get_model_info(model_path)
+                
+                # Run blocking I/O in executor to prevent UI blocking
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(self.executor, self.get_model_info, model_path)
                 return web.json_response({"success": True, "data": result})
             except Exception as e:
                 error_msg = f"Read model info failed: {str(e)}"
@@ -126,7 +118,10 @@ class ModelManager:
                 logger.info(f"Model path resolved: {model_path}")
                 if model_path is None:
                     raise RuntimeError(f"File {filename} not found at index {path_index} for type {model_type}")
-                self.update_model(model_path, model_data)
+                
+                # Run blocking I/O in executor
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(self.executor, self.update_model, model_path, model_data)
                 return web.json_response({"success": True})
             except Exception as e:
                 error_msg = f"Update model failed: {str(e)}"
@@ -147,7 +142,10 @@ class ModelManager:
                 logger.info(f"Model path resolved: {model_path}")
                 if model_path is None:
                     raise RuntimeError(f"File {filename} not found at index {path_index} for type {model_type}")
-                self.remove_model(model_path)
+                
+                # Run blocking I/O in executor
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(self.executor, self.remove_model, model_path)
                 return web.json_response({"success": True})
             except Exception as e:
                 error_msg = f"Delete model failed: {str(e)}"
@@ -156,7 +154,7 @@ class ModelManager:
 
         @routes.get("/model-manager/download/status")
         async def get_download_tasks(request):
-            with self.lock:
+            async with self.lock:
                 tasks = [
                     {
                         "taskId": task_id,
@@ -204,7 +202,7 @@ class ModelManager:
                     raise ValueError(f"Model already exists at {model_path}")
 
                 task_id = f"download_{model_type}_{path_index}_{id(request)}"
-                with self.lock:
+                async with self.lock:
                     if task_id in self.running_tasks:
                         return web.json_response({"success": True, "task_id": task_id, "status": "running"})
                     self.running_tasks[task_id] = {
@@ -213,34 +211,8 @@ class ModelManager:
                         "error": None
                     }
 
-                async def download_task():
-                    try:
-                        logger.info(f"Starting download task: {task_id}, URL: {url}, Path: {model_path}")
-                        # Placeholder: Implement actual download logic with progress updates
-                        for i in range(1, 4):  # Simulate progress
-                            await asyncio.sleep(1)
-                            with self.lock:
-                                self.running_tasks[task_id]["results"]["downloadedSize"] = i * 100
-                                self.running_tasks[task_id]["results"]["totalSize"] = 300
-                                self.running_tasks[task_id]["results"]["bps"] = 100
-                                await utils.send_json("update_download_task", {
-                                    "task_id": task_id,
-                                    "fullname": fullname,
-                                    "downloadedSize": i * 100,
-                                    "totalSize": 300,
-                                    "bps": 100
-                                })
-                        with self.lock:
-                            self.running_tasks[task_id]["status"] = "completed"
-                            self.running_tasks[task_id]["results"] = {"path": model_path, "fullname": fullname}
-                            await utils.send_json("complete_download_task", {"task_id": task_id, "path": model_path})
-                    except Exception as e:
-                        with self.lock:
-                            self.running_tasks[task_id]["status"] = "failed"
-                            self.running_tasks[task_id]["error"] = str(e)
-                            await utils.send_json("error_download_task", {"task_id": task_id, "error": str(e)})
-
-                self.executor.submit(lambda: self.loop.run_until_complete(download_task()))
+                # Create download task properly without blocking
+                asyncio.create_task(self._run_download_task(task_id, url, model_path, fullname))
                 logger.info(f"Download task started: {task_id}")
                 return web.json_response({"success": True, "task_id": task_id, "status": "started"})
 
@@ -249,12 +221,92 @@ class ModelManager:
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
+    async def _run_scan_task(self, folder: str, request, task_id: str):
+        """Non-blocking scan task runner"""
+        try:
+            results = await self.scan_models(folder, request, task_id)
+            async with self.lock:
+                self.running_tasks[task_id]["results"] = results
+                self.running_tasks[task_id]["status"] = "completed"
+            
+            # Send completion event in non-blocking way
+            asyncio.create_task(self._send_websocket_message("complete_scan_task", {
+                "task_id": task_id, 
+                "results": results
+            }))
+        except Exception as e:
+            async with self.lock:
+                self.running_tasks[task_id]["status"] = "failed"
+                self.running_tasks[task_id]["error"] = str(e)
+            
+            # Send error event in non-blocking way
+            asyncio.create_task(self._send_websocket_message("error_scan_task", {
+                "task_id": task_id, 
+                "error": str(e)
+            }))
+
+    async def _run_download_task(self, task_id: str, url: str, model_path: str, fullname: str):
+        """Non-blocking download task runner"""
+        try:
+            logger.info(f"Starting download task: {task_id}, URL: {url}, Path: {model_path}")
+            
+            # Simulate download progress (replace with actual download logic)
+            for i in range(1, 4):
+                await asyncio.sleep(1)  # Non-blocking sleep
+                
+                progress_data = {
+                    "fullname": fullname,
+                    "downloadedSize": i * 100,
+                    "totalSize": 300,
+                    "bps": 100
+                }
+                
+                async with self.lock:
+                    self.running_tasks[task_id]["results"].update(progress_data)
+                
+                # Send progress update in non-blocking way
+                asyncio.create_task(self._send_websocket_message("update_download_task", {
+                    "task_id": task_id,
+                    **progress_data
+                }))
+            
+            async with self.lock:
+                self.running_tasks[task_id]["status"] = "completed"
+                self.running_tasks[task_id]["results"] = {"path": model_path, "fullname": fullname}
+            
+            # Send completion event in non-blocking way
+            asyncio.create_task(self._send_websocket_message("complete_download_task", {
+                "task_id": task_id, 
+                "path": model_path
+            }))
+            
+        except Exception as e:
+            async with self.lock:
+                self.running_tasks[task_id]["status"] = "failed"
+                self.running_tasks[task_id]["error"] = str(e)
+            
+            # Send error event in non-blocking way
+            asyncio.create_task(self._send_websocket_message("error_download_task", {
+                "task_id": task_id, 
+                "error": str(e)
+            }))
+
+    async def _send_websocket_message(self, event_type: str, data: dict):
+        """Non-blocking WebSocket message sender"""
+        try:
+            # Use asyncio.create_task to prevent blocking
+            await utils.send_json(event_type, data)
+        except Exception as e:
+            logger.error(f"Failed to send WebSocket message {event_type}: {str(e)}")
+
     async def scan_models(self, folder: str, request, task_id: str = None):
+        """Non-blocking model scanner"""
         result = []
         include_hidden_files = utils.get_setting_value(request, "scan.include_hidden_files", False)
         folders, *others = folder_paths.folder_names_and_paths[folder]
 
         def get_file_info(entry: str, base_path: str, path_index: int):
+            """Synchronous file info getter (runs in executor)"""
             prefix_path = utils.normalize_path(base_path)
             if not prefix_path.endswith("/"):
                 prefix_path = f"{prefix_path}/"
@@ -302,26 +354,43 @@ class ModelManager:
         for path_index, base_path in enumerate(folders):
             if not os.path.exists(base_path):
                 continue
-            async def progress_callback(file_path: str):
+                
+            # Get file entries in executor to prevent blocking
+            loop = asyncio.get_event_loop()
+            file_entries = await loop.run_in_executor(
+                self.executor, 
+                functools.partial(utils.recursive_search_files_sync, base_path, request)
+            )
+            
+            # Process files in executor to prevent blocking
+            file_info_tasks = []
+            for entry in file_entries:
+                task = loop.run_in_executor(self.executor, get_file_info, entry, base_path, path_index)
+                file_info_tasks.append(task)
+            
+            # Process results as they complete
+            for completed_task in asyncio.as_completed(file_info_tasks):
+                file_info = await completed_task
+                if file_info is None:
+                    continue
+                    
+                result.append(file_info)
+                
+                # Send progress update if scanning with task_id
                 if task_id:
-                    file_info = get_file_info(file_path, base_path, path_index)
-                    if file_info:
-                        with self.lock:
-                            self.running_tasks[task_id]["results"].append(file_info)
-                            await utils.send_json("update_scan_task", {"task_id": task_id, "file": file_info})
-
-            file_entries = await utils.recursive_search_files(base_path, request, progress_callback if task_id else None)
-            with ThreadPoolExecutor() as executor:
-                futures = {executor.submit(get_file_info, entry, base_path, path_index): entry for entry in file_entries}
-                for future in as_completed(futures):
-                    file_info = future.result()
-                    if file_info is None:
-                        continue
-                    result.append(file_info)
+                    async with self.lock:
+                        self.running_tasks[task_id]["results"].append(file_info)
+                    
+                    # Send update in non-blocking way
+                    asyncio.create_task(self._send_websocket_message("update_scan_task", {
+                        "task_id": task_id, 
+                        "file": file_info
+                    }))
 
         return result
 
     def get_model_info(self, model_path: str):
+        """Synchronous model info getter (called from executor)"""
         directory = os.path.dirname(model_path)
         metadata = utils.get_model_metadata(model_path)
         description_file = utils.get_model_description_name(model_path)
@@ -336,6 +405,7 @@ class ModelManager:
         }
 
     def update_model(self, model_path: str, model_data: dict):
+        """Synchronous model updater (called from executor)"""
         if "previewFile" in model_data:
             previewFile = model_data["previewFile"]
             if isinstance(previewFile, str) and previewFile == "undefined":
@@ -356,6 +426,7 @@ class ModelManager:
             utils.rename_model(model_path, new_model_path)
 
     def remove_model(self, model_path: str):
+        """Synchronous model remover (called from executor)"""
         model_dirname = os.path.dirname(model_path)
         os.remove(model_path)
         model_previews = utils.get_model_all_images(model_path)
@@ -364,6 +435,11 @@ class ModelManager:
         model_descriptions = utils.get_model_all_descriptions(model_path)
         for description in model_descriptions:
             os.remove(utils.join_path(model_dirname, description))
+
+    async def shutdown(self):
+        """Graceful shutdown"""
+        self._shutdown = True
+        self.executor.shutdown(wait=True)
 
 model_manager = ModelManager()
 
