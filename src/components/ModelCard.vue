@@ -40,7 +40,24 @@
           </video>
         </div>
         <div v-else class="h-full w-full p-1 hover:p-0">
-          <img class="h-full w-full rounded-lg object-cover" :src="preview" />
+          <div class="relative h-full w-full">
+            <img 
+              class="h-full w-full rounded-lg object-cover" 
+              :src="preview" 
+              :alt="model.basename"
+              @error="handleImageError"
+              v-show="!imageError"
+            />
+            <div 
+              v-if="imageError" 
+              class="absolute inset-0 flex items-center justify-center bg-gray-800 rounded-lg"
+            >
+              <div class="text-center text-gray-400">
+                <i class="pi pi-image text-4xl mb-2"></i>
+                <div>No Preview</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -97,6 +114,12 @@ const preview = computed(() =>
     : props.model.preview,
 )
 
+const imageError = ref(false)
+
+const handleImageError = () => {
+  imageError.value = true
+}
+
 const container = ref<HTMLElement | null>(null)
 
 const { width } = useElementSize(container)
@@ -107,3 +130,9 @@ const typeLabelScale = computed(() => {
 
 const { dragToAddModelNode } = useModelNodeAction()
 </script>
+
+<style scoped>
+.pi-image {
+  display: block;
+}
+</style>

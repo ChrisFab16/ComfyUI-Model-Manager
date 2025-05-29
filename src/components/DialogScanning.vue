@@ -154,10 +154,12 @@ import StepPanel from 'primevue/steppanel'
 import StepPanels from 'primevue/steppanels'
 import Stepper from 'primevue/stepper'
 import Tree from 'primevue/tree'
+import { api, app } from 'scripts/comfyAPI'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useWebSocket } from 'hooks/webSocket'
 import { Model } from 'types/typings'
 import { bytesToSize, formatDate } from 'utils/common'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const { toast } = useToast()
@@ -165,7 +167,9 @@ const { storeEvent } = useStoreProvider()
 const { request } = useRequest()
 
 const stepValue = ref('1')
-const { folders } = useModels()
+
+const { folders, models } = useModels()
+
 const allType = 'All'
 const currentType = ref<string>()
 const isLoading = ref(false)
@@ -390,4 +394,52 @@ const scanActions = computed(() => [
     command: () => handleScanModelInformation('diff'),
   },
 ])
+
+const refreshTaskContent = async () => {
+  const result = await request('/model-info/scan')
+  const listContent = result?.models ?? {}
+  scanModelsList.value = Object.values(listContent)
+  batchScanningStep.value = Object.keys(listContent).length ? 2 : 1
+}
+
+// Watch for model updates during scanning
+watch(
+  () => models.value[currentType.value],
+  (newModels) => {
+    if (newModels) {
+      scanCompleteCount.value = newModels.length
+      // Update progress if we have a total count
+      if (scanTotalCount.value > 0) {
+        scanProgress.value = Math.round((scanCompleteCount.value / scanTotalCount.value) * 100)
+      }
+    }
+  },
+  { deep: true }
+)
+
+// Handle WebSocket messages for scanning updates
+const ws = useWebSocket()
+ws.onMessage((message) => {
+  if (message.type === 'scan_complete') {
+    const { folder, count } = message
+    if (folder === currentType.value) {
+      scanTotalCount.value = count
+      scanProgress.value = 100
+    }
+  } else if (message.type === 'scan_error') {
+    const { folder } = message
+    if (folder === currentType.value) {
+      scanProgress.value = -1
+    }
+  }
+})
+
+onMounted(() => {
+  refreshTaskContent()
+
+  api.addEventListener('update_scan_information_task', (event) => {
+    const content = event.detail
+    scanModelsList.value = content.models
+  })
+})
 </script>

@@ -6,6 +6,7 @@ import os
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(__file__))
 MODELS_ROOT = os.path.join(PLUGIN_ROOT, "models")
 CACHE_ROOT = os.path.join(PLUGIN_ROOT, "cache")
+task_cache_uri = os.path.join(CACHE_ROOT, "tasks")  # Directory for storing task status and content files
 
 # Model download settings
 MAX_CONCURRENT_DOWNLOADS = 3

@@ -65,3 +65,47 @@ There are three installation methods, choose one
 <img src="demo/scan-model-info.png" alt="Model Manager Demo Screenshot" style="max-width: 100%; max-height: 300px"/>
 
 - Scan models and try to download information & preview.
+
+## Path Configuration
+
+### Default Model Paths
+By default, the Model Manager looks for models in the standard ComfyUI models directory structure:
+```
+E:\code\ComfyUI\models\
+├── checkpoints\
+├── loras\
+├── vae\
+├── clip\
+└── ...
+```
+
+### Additional Model Paths
+You can configure additional model paths using `extra_model_paths.yaml` in the ComfyUI root directory:
+
+```yaml
+# Example extra_model_paths.yaml
+checkpoints:
+  - "E:/models/stable-diffusion"
+  - "D:/ai/checkpoints"
+loras: "E:/models/loras"
+vae:
+  - "E:/models/vae"
+  - "D:/ai/vae"
+```
+
+#### Configuration Rules:
+1. All paths must be absolute paths
+2. Paths can be specified as either:
+   - A single string for one path
+   - A list of strings for multiple paths
+3. Only valid model types are allowed (checkpoints, loras, vae, etc.)
+4. Invalid configurations will be logged and skipped
+
+#### Validation:
+The Model Manager validates:
+- Path format (must be absolute)
+- Model type validity
+- Path existence
+- File permissions
+
+Invalid configurations will be logged with specific error messages.

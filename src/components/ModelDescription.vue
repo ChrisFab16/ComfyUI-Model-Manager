@@ -58,6 +58,19 @@ const innerValue = ref<string>()
 watch(
   description,
   (value) => {
+    // Try to parse JSON if it's a string that looks like JSON
+    if (typeof value === 'string' && value.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(value)
+        // If it's metadata JSON, extract just the description field
+        if (parsed.description) {
+          innerValue.value = parsed.description
+          return
+        }
+      } catch (e) {
+        // If parsing fails, use the original value
+      }
+    }
     innerValue.value = value
   },
   { immediate: true },

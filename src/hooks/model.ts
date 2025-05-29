@@ -30,9 +30,11 @@ import {
   toRaw,
   toValue,
   unref,
+  watch,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { configSetting } from './config'
+import { useWebSocket } from './websocket'
 
 type ModelFolder = Record<string, string[]>
 
@@ -54,13 +56,55 @@ export const useModels = defineStore('models', (store) => {
   const { t } = useI18n()
   const { request } = useRequest()
   const loading = useLoading()
+  const ws = useWebSocket()
 
   const folders = ref<ModelFolder>({})
   const initialized = ref(false)
+  const scanning = ref<Record<string, boolean>>({})
   const models = ref<Record<string, Model[]>>({})
-  const scanTasks = ref<
-    Record<string, { taskId: string; status: string; error: string | null }>
-  >({})
+
+  // Handle WebSocket messages for scanning updates
+  ws.onMessage((message) => {
+    if (message.type === 'model_found') {
+      const { folder, model } = message
+      if (!models.value[folder]) {
+        models.value[folder] = []
+      }
+      models.value[folder].push(model)
+      models.value[folder].sort((a, b) => {
+        if (a.subFolder === b.subFolder) {
+          return a.filename.localeCompare(b.filename)
+        }
+        return a.subFolder.localeCompare(b.subFolder)
+      })
+    } else if (message.type === 'scan_complete') {
+      const { folder } = message
+      scanning.value[folder] = false
+    } else if (message.type === 'scan_error') {
+      const { folder, error } = message
+      scanning.value[folder] = false
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: `Failed to scan ${folder}: ${error}`,
+        life: 15000,
+      })
+    }
+  })
+
+  const refreshModels = async (folder: string) => {
+    loading.show(folder)
+    return request(`/models/${folder}`)
+      .then((resData) => {
+        const { data, is_scanning } = resData
+        models.value[folder] = data
+        scanning.value[folder] = is_scanning
+        return data
+      })
+      .finally(() => {
+        loading.hide(folder)
+      })
+  }
 
   const refreshFolders = async () => {
     loading.show('folders')
@@ -84,33 +128,10 @@ export const useModels = defineStore('models', (store) => {
 
   provide(modelFolderProvideKey, folders)
 
-  const refreshModels = async (folder: string) => {
-    if (!folder || scanTasks.value[folder]?.status === 'running') return
-
-    if (!(folder in folders.value)) {
-      console.error(t('error'), t('invalidModelType', { type: folder }))
-      return
-    }
-
-    loading.show(`scan-${folder}`)
-    try {
-      const response = await request(`/scan/start?folder=${folder}`)
-      if (!response.success) {
-        throw new Error(response.error || t('scanStartFailed'))
-      }
-      const { taskId } = response
-      scanTasks.value[folder] = { taskId, status: 'running', error: null }
-      console.log(`Scan started for ${folder}: taskId=${taskId}`)
-    } catch (error) {
-      console.error(t('error'), error.message || t('scanStartFailed'))
-    } finally {
-      loading.hide(`scan-${folder}`)
-    }
-  }
-
   const refreshAllModels = async (force = false) => {
     const forceRefresh = force ? refreshFolders() : Promise.resolve()
     models.value = {}
+    scanning.value = {}
     const excludeScanTypes = app.ui?.settings.getSettingValue<string>(
       configSetting.excludeScanTypes,
     )

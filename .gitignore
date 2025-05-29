@@ -1,3 +1,9 @@
+# Node modules and logs - never commit these
+node_modules/
+node_modules/**/*
+logs/
+logs/**/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -200,3 +206,30 @@ config/
 
 # private info
 private.key
+*.key
+api_keys.*
+.env
+.env.*
+*_api_keys.*
+secrets.*
+credentials.*
+config.local.*
+.secrets
+.api_keys
+private/
+secrets/
+logs/console-export-2025-5-26_9-39-56.txt
+logs/console-export-2025-5-26_9-46-43.txt
+logs/console-export-2025-5-26_9-52-49.txt
+logs/console-export-2025-5-26_9-56-37.txt
+logs/console-export-2025-5-26_10-49-34.txt
+logs/console-export-2025-5-26_11-2-34.txt
+logs/console-export-2025-5-26_11-11-0.txt
+logs/console-export-2025-5-26_11-16-17.txt
+logs/console-export-2025-5-26_11-21-16.txt
+logs/console-export-2025-5-26_11-23-58.txt
+logs/console-export-2025-5-26_11-24-31.txt
+logs/console-export-2025-5-26_11-27-45.txt
+logs/console-export-2025-5-26_11-38-25.txt
+logs/console-export-2025-5-26_13-12-49.txt
+logs/console-export-2025-5-26_14-21-4.txt

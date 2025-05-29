@@ -1,6 +1,6 @@
 // src/hooks/download.ts
 import { useLoading } from 'hooks/loading'
-import { request as requestFn } from 'hooks/request' // Removed useRequest
+import { request as requestFn } from 'hooks/request'
 import { defineStore } from 'hooks/store'
 import { api } from 'scripts/comfyAPI'
 import {
@@ -12,10 +12,12 @@ import {
 import { bytesToSize } from 'utils/common'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useWebSocket } from 'hooks/websocket'
 
 export const useDownload = defineStore('download', (store) => {
   const { t } = useI18n()
   const loading = useLoading()
+  const ws = useWebSocket()
 
   const taskList = ref<DownloadTask[]>([])
 
@@ -166,6 +168,34 @@ export const useDownload = defineStore('download', (store) => {
       loading.hide('downloadSettings')
     }
   }
+
+  // Handle WebSocket events
+  ws.onMessage((event) => {
+    if (event.type === 'fetch_download_task_list') {
+      const data = event.detail as DownloadTaskOptions[]
+      taskList.value = data.map((item) => createTaskItem(item))
+    } else if (event.type === 'create_download_task') {
+      const item = event.detail as DownloadTaskOptions
+      taskList.value.unshift(createTaskItem(item))
+    } else if (event.type === 'update_download_task') {
+      const item = event.detail as DownloadTaskOptions
+      for (const task of taskList.value) {
+        if (task.taskId === item.taskId) {
+          if (item.error) {
+            toast.add({
+              severity: 'error',
+              summary: 'Download Error',
+              detail: item.error,
+              life: 15000,
+              sticky: true
+            })
+          }
+          Object.assign(task, createTaskItem(item))
+          break
+        }
+      }
+    }
+  })
 
   const handleDownloadUpdate = ({
     taskId,
