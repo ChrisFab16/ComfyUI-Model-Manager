@@ -23,9 +23,11 @@ import {
   toRaw,
   toValue,
   unref,
+  watch,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { configSetting } from './config'
+import { useWebSocket } from './websocket'
 
 type ModelFolder = Record<string, string[]>
 
@@ -48,9 +50,11 @@ export const useModels = defineStore('models', (store) => {
   const { toast, confirm } = useToast()
   const { t } = useI18n()
   const loading = useLoading()
+  const ws = useWebSocket()
 
   const folders = ref<ModelFolder>({})
   const initialized = ref(false)
+  const scanning = ref<Record<string, boolean>>({})
 
   const refreshFolders = async () => {
     return request('/models').then((resData) => {
@@ -63,12 +67,43 @@ export const useModels = defineStore('models', (store) => {
 
   const models = ref<Record<string, Model[]>>({})
 
+  // Handle WebSocket messages for scanning updates
+  ws.onMessage((message) => {
+    if (message.type === 'model_found') {
+      const { folder, model } = message
+      if (!models.value[folder]) {
+        models.value[folder] = []
+      }
+      models.value[folder].push(model)
+      models.value[folder].sort((a, b) => {
+        if (a.subFolder === b.subFolder) {
+          return a.filename.localeCompare(b.filename)
+        }
+        return a.subFolder.localeCompare(b.subFolder)
+      })
+    } else if (message.type === 'scan_complete') {
+      const { folder } = message
+      scanning.value[folder] = false
+    } else if (message.type === 'scan_error') {
+      const { folder, error } = message
+      scanning.value[folder] = false
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: `Failed to scan ${folder}: ${error}`,
+        life: 15000,
+      })
+    }
+  })
+
   const refreshModels = async (folder: string) => {
     loading.show(folder)
     return request(`/models/${folder}`)
       .then((resData) => {
-        models.value[folder] = resData
-        return resData
+        const { data, is_scanning } = resData
+        models.value[folder] = data
+        scanning.value[folder] = is_scanning
+        return data
       })
       .finally(() => {
         loading.hide(folder)
@@ -78,6 +113,7 @@ export const useModels = defineStore('models', (store) => {
   const refreshAllModels = async (force = false) => {
     const forceRefresh = force ? refreshFolders() : Promise.resolve()
     models.value = {}
+    scanning.value = {}
     const excludeScanTypes = app.ui?.settings.getSettingValue<string>(
       configSetting.excludeScanTypes,
     )

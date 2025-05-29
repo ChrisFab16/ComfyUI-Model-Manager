@@ -131,14 +131,15 @@ import StepPanels from 'primevue/steppanels'
 import Stepper from 'primevue/stepper'
 import Tree from 'primevue/tree'
 import { api, app } from 'scripts/comfyAPI'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useWebSocket } from 'hooks/webSocket'
 
 const { t } = useI18n()
 
 const stepValue = ref('1')
 
-const { folders } = useModels()
+const { folders, models } = useModels()
 
 const allType = 'All'
 const currentType = ref<string>()
@@ -199,21 +200,9 @@ const handleConfirmSubdir = () => {
 
 const batchScanningStep = ref(0)
 const scanModelsList = ref<Record<string, boolean>>({})
-const scanTotalCount = computed(() => {
-  return Object.keys(scanModelsList.value).length
-})
-const scanCompleteCount = computed(() => {
-  return Object.keys(scanModelsList.value).filter(
-    (key) => scanModelsList.value[key],
-  ).length
-})
-const scanProgress = computed(() => {
-  if (scanTotalCount.value === 0) {
-    return -1
-  }
-  const progress = scanCompleteCount.value / scanTotalCount.value
-  return Number(progress.toFixed(4)) * 100
-})
+const scanTotalCount = ref(0)
+const scanCompleteCount = ref(0)
+const scanProgress = ref(-1)
 
 const handleScanModelInformation = async function () {
   batchScanningStep.value = 0
@@ -259,6 +248,38 @@ const refreshTaskContent = async () => {
   scanModelsList.value = listContent
   batchScanningStep.value = Object.keys(listContent).length ? 2 : 1
 }
+
+// Watch for model updates during scanning
+watch(
+  () => models.value[currentType.value],
+  (newModels) => {
+    if (newModels) {
+      scanCompleteCount.value = newModels.length
+      // Update progress if we have a total count
+      if (scanTotalCount.value > 0) {
+        scanProgress.value = Math.round((scanCompleteCount.value / scanTotalCount.value) * 100)
+      }
+    }
+  },
+  { deep: true }
+)
+
+// Handle WebSocket messages for scanning updates
+const ws = useWebSocket()
+ws.onMessage((message) => {
+  if (message.type === 'scan_complete') {
+    const { folder, count } = message
+    if (folder === currentType.value) {
+      scanTotalCount.value = count
+      scanProgress.value = 100
+    }
+  } else if (message.type === 'scan_error') {
+    const { folder } = message
+    if (folder === currentType.value) {
+      scanProgress.value = -1
+    }
+  }
+})
 
 onMounted(() => {
   refreshTaskContent()

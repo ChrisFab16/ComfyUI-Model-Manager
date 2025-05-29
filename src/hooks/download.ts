@@ -119,15 +119,37 @@ export const useDownload = defineStore('download', (store) => {
           if (item.error) {
             toast.add({
               severity: 'error',
-              summary: 'Error',
+              summary: 'Download Error',
               detail: item.error,
               life: 15000,
+              sticky: true
             })
-            item.error = undefined
           }
           Object.assign(task, createTaskItem(item))
+          break
         }
       }
+    })
+
+    api.addEventListener('task_progress', (event) => {
+      const task = event.detail
+      for (const existingTask of taskList.value) {
+        if (existingTask.taskId === task.taskId) {
+          Object.assign(existingTask, createTaskItem(task))
+          break
+        }
+      }
+    })
+
+    api.addEventListener('task_error', (event) => {
+      const task = event.detail
+      toast.add({
+        severity: 'error',
+        summary: 'Task Error',
+        detail: task.error,
+        life: 15000,
+        sticky: true
+      })
     })
 
     api.addEventListener('delete_download_task', (event) => {
@@ -136,7 +158,7 @@ export const useDownload = defineStore('download', (store) => {
     })
 
     api.addEventListener('complete_download_task', (event) => {
-      const taskId = event.detail as string
+      const taskId = event.detail
       const task = taskList.value.find((item) => item.taskId === taskId)
       taskList.value = taskList.value.filter((item) => item.taskId !== taskId)
       toast.add({
@@ -146,6 +168,27 @@ export const useDownload = defineStore('download', (store) => {
         life: 2000,
       })
       store.models.refresh()
+    })
+
+    api.addEventListener('task_stalled', (event) => {
+      const task = event.detail
+      toast.add({
+        severity: 'warn',
+        summary: 'Task Stalled',
+        detail: task.error,
+        life: 15000,
+        sticky: true
+      })
+    })
+
+    api.addEventListener('task_recovered', (event) => {
+      const task = event.detail
+      toast.add({
+        severity: 'info',
+        summary: 'Task Recovered',
+        detail: 'Download task has been recovered and resumed.',
+        life: 5000
+      })
     })
   })
 
