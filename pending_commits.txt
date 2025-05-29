@@ -1,0 +1,85 @@
+# Pending Commits for ComfyUI Model Manager
+
+## Current Branch Work
+Topic: WebSocket Communication and Task System Improvements
+
+### Files Changed
+1. Added comfyui_manager/websocket_manager.py
+   - Created WebSocketManager class for centralized WebSocket handling
+   - Implemented singleton pattern for global access
+   - Added support for both server and plugin WebSocket clients
+   - Added robust error handling and connection management
+   - Added status monitoring and reporting
+   - Added reconnection support
+   - Added message tracking
+
+2. Modified comfyui_manager/utils.py
+   - Replaced direct WebSocket handling with WebSocketManager
+   - Fixed Application.instances access issue
+   - Improved error handling and logging
+   - Removed redundant WebSocket code
+
+3. Modified comfyui_manager/task_system/task_manager.py
+   - Integrated with WebSocketManager for message broadcasting
+   - Removed redundant WebSocket client management
+   - Improved task notification system
+   - Prepared for task state validation
+
+4. Modified comfyui_manager/manager.py
+   - Added WebSocket management API endpoints
+   - Added status checking functionality
+   - Added reconnection support
+   - Added message monitoring capabilities
+   - Improved error handling and reporting
+
+### New API Endpoints
+1. GET /model-manager/websocket/status ✅
+   - Returns current WebSocket connection status
+   - Shows server and plugin client counts
+   - Reports total connection count
+
+2. POST /model-manager/websocket/reconnect ✅
+   - Forces WebSocket reconnection
+   - Cleans up stale connections
+   - Returns success status
+
+3. GET /model-manager/websocket/messages ✅
+   - Returns WebSocket connection state
+   - Provides message monitoring capabilities
+   - Shows client connection details
+
+### Issues Fixed
+- Fixed "Application has no attribute 'instances'" error ✅
+- Improved WebSocket connection reliability ✅
+- Added proper cleanup of disconnected clients ✅
+- Centralized WebSocket message handling ✅
+- Fixed WebSocket status reporting ✅
+- Fixed reconnection functionality ✅
+- Fixed message monitoring ✅
+
+### Testing Completed
+1. WebSocket connection stability ✅
+2. Message delivery reliability ✅
+3. Client management ✅
+4. Error recovery ✅
+5. Multiple client support ✅
+
+### Next Steps
+1. Test WebSocket integration with task system
+2. Implement task state validation
+3. Add task recovery mechanisms
+4. Improve error handling
+5. Add progress reporting
+
+### Commit Message
+feat(websocket): Implement centralized WebSocket management
+
+- Add WebSocketManager for centralized communication
+- Fix Application.instances access issue
+- Add WebSocket API endpoints
+- Add status monitoring and reconnection support
+- Add message tracking and client management
+- Improve error handling and reporting
+- Remove redundant WebSocket code
+- Add comprehensive testing
+``` 
