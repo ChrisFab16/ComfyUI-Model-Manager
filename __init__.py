@@ -90,12 +90,16 @@ utils.download_web_distribution(version)
 from comfyui_manager import manager
 from comfyui_manager import download
 from comfyui_manager import information
+from comfyui_manager import metadata_refresh
+from comfyui_manager import download_validator
 
 routes = config.routes
 
 manager.ModelManager().add_routes(routes)
 download.ModelDownload().add_routes(routes)
 information.Information().add_routes(routes)
+metadata_refresh.MetadataRefresh().add_routes(routes)
+download_validator.DownloadValidator().add_routes(routes)
 
 WEB_DIRECTORY = "web"
 __all__ = ["WEB_DIRECTORY", "NODE_CLASS_MAPPINGS"]

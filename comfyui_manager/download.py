@@ -64,7 +64,21 @@ class ModelDownload:
         async def create_model(request):
             """Create a new model download task."""
             try:
-                task_data = await request.json()
+                # Handle request JSON parsing with UTF-8 error handling
+                try:
+                    task_data = await request.json()
+                except UnicodeDecodeError as e:
+                    utils.print_error(f"UTF-8 decode error in request body: {e}")
+                    return web.json_response({
+                        "success": False, 
+                        "error": "Request contains invalid UTF-8 data. Please check the model description for binary content."
+                    })
+                except ValueError as e:
+                    utils.print_error(f"JSON decode error in request body: {e}")
+                    return web.json_response({
+                        "success": False, 
+                        "error": "Invalid JSON in request body."
+                    })
                 
                 # Create task parameters
                 params = {

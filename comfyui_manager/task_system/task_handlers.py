@@ -319,7 +319,7 @@ class TaskHandlers:
             else:
                 # Try to extract from YAML front matter in description
                 description = model_info.get("description", "")
-                if description.startswith("---"):
+                if description and isinstance(description, str) and description.startswith("---"):
                     try:
                         import yaml
                         yaml_end = description.find("---", 3)
@@ -349,7 +349,25 @@ class TaskHandlers:
             
             # Extract structured data from the description
             description = model_info.get("description", "")
-            extracted_data = self._extract_metadata_from_description(description)
+            
+            # Ensure description is valid before processing
+            if isinstance(description, bytes):
+                try:
+                    description = description.decode('utf-8', errors='ignore')
+                except Exception:
+                    print(f"[ComfyUI Model Manager] Warning: Could not decode description, using empty string")
+                    description = ""
+            elif not isinstance(description, str):
+                description = str(description) if description is not None else ""
+            
+            try:
+                extracted_data = self._extract_metadata_from_description(description)
+            except UnicodeDecodeError as e:
+                print(f"[ComfyUI Model Manager] UTF-8 decode error in description, skipping metadata extraction: {e}")
+                extracted_data = {}
+            except Exception as e:
+                print(f"[ComfyUI Model Manager] Error extracting metadata from description: {e}")
+                extracted_data = {}
             
             metadata = {
                 "id": model_info.get("id") or extracted_data.get("id"),
@@ -398,8 +416,17 @@ class TaskHandlers:
                 "source": extracted_data.get("website"),
                 "source_url": extracted_data.get("modelPage")
             }
-            with open(info_path, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=4)
+            
+            try:
+                with open(info_path, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=4, ensure_ascii=False)
+            except UnicodeEncodeError as e:
+                print(f"[ComfyUI Model Manager] UTF-8 encode error saving metadata, trying with ensure_ascii=True: {e}")
+                with open(info_path, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=4, ensure_ascii=True)
+            except Exception as e:
+                print(f"[ComfyUI Model Manager] Failed to save metadata file: {e}")
+                raise
 
             # Remove old .md file if it exists
             old_desc_file = os.path.splitext(model_path)[0] + ".md"
@@ -421,15 +448,36 @@ class TaskHandlers:
             return extracted
             
         try:
+            # Ensure description is a string and handle potential binary data
+            if isinstance(description, bytes):
+                try:
+                    description = description.decode('utf-8', errors='ignore')
+                except Exception:
+                    print(f"[ComfyUI Model Manager] Warning: Could not decode description as UTF-8, skipping metadata extraction")
+                    return extracted
+            elif not isinstance(description, str):
+                # Convert to string if it's some other type
+                description = str(description)
+            
+            # Check if description contains mostly binary data (high ratio of non-printable characters)
+            if len(description) > 0:
+                printable_ratio = sum(1 for c in description[:1000] if c.isprintable() or c.isspace()) / min(len(description), 1000)
+                if printable_ratio < 0.7:  # Less than 70% printable characters
+                    print(f"[ComfyUI Model Manager] Warning: Description appears to contain binary data, skipping metadata extraction")
+                    return extracted
+            
             # Extract YAML front matter
             if description.startswith("---"):
                 import yaml
                 yaml_end = description.find("---", 3)
                 if yaml_end > 3:
                     yaml_content = description[3:yaml_end]
-                    yaml_data = yaml.safe_load(yaml_content)
-                    if yaml_data:
-                        extracted.update(yaml_data)
+                    try:
+                        yaml_data = yaml.safe_load(yaml_content)
+                        if yaml_data:
+                            extracted.update(yaml_data)
+                    except yaml.YAMLError as e:
+                        print(f"[ComfyUI Model Manager] Warning: Failed to parse YAML metadata: {e}")
             
             # Extract trigger words from the markdown section
             trigger_section_start = description.find("# Trigger Words")
@@ -449,6 +497,8 @@ class TaskHandlers:
                     trigger_words = [word.strip() for word in trigger_content.replace("\n", "").split(",") if word.strip()]
                     extracted["trainedWords"] = trigger_words
                     
+        except UnicodeDecodeError as e:
+            print(f"[ComfyUI Model Manager] UTF-8 decode error in metadata extraction: {e}")
         except Exception as e:
             print(f"[ComfyUI Model Manager] Failed to extract metadata from description: {e}")
             

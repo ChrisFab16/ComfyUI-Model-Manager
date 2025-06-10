@@ -2,10 +2,10 @@
 # ComfyUI Server Restart Script
 # Use this after making backend changes to ComfyUI-Model-Manager
 
-Write-Host "🔄 Starting ComfyUI server restart..." -ForegroundColor Yellow
+Write-Host "Starting ComfyUI server restart..." -ForegroundColor Yellow
 
 # Step 1: Kill existing processes
-Write-Host "🛑 Stopping existing server processes..." -ForegroundColor Red
+Write-Host "Stopping existing server processes..." -ForegroundColor Red
 $processId = (Get-NetTCPConnection -LocalPort 8188 -ErrorAction SilentlyContinue).OwningProcess
 if ($processId) { 
     Write-Host "   Found process $processId, terminating..."
@@ -21,31 +21,31 @@ Get-Process python -ErrorAction SilentlyContinue | Where-Object {
 } | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # Step 2: Wait for port to be freed
-Write-Host "⏳ Waiting for port 8188 to be freed..." -ForegroundColor Yellow
+Write-Host "Waiting for port 8188 to be freed..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
 
 # Step 3: Start server
-Write-Host "🚀 Starting ComfyUI server..." -ForegroundColor Green
+Write-Host "Starting ComfyUI server..." -ForegroundColor Green
 cd E:\code\ComfyUI
 $process = Start-Process python -ArgumentList "main.py --port 8188" -WindowStyle Hidden -PassThru
 Write-Host "   Server process started with PID: $($process.Id)"
 
 # Step 4: Wait and verify
-Write-Host "⏳ Waiting for server to initialize..." -ForegroundColor Yellow
+Write-Host "Waiting for server to initialize..." -ForegroundColor Yellow
 Start-Sleep -Seconds 15
 
 $ready = $false
 $attempts = 0
 $maxAttempts = 10
 
-Write-Host "🔍 Checking server availability..." -ForegroundColor Cyan
+Write-Host "Checking server availability..." -ForegroundColor Cyan
 while (-not $ready -and $attempts -lt $maxAttempts) {
     try {
         $connection = New-Object System.Net.Sockets.TcpClient
         $connection.Connect("127.0.0.1", 8188)
         if ($connection.Connected) {
             $ready = $true
-            Write-Host "✅ Server is ready and accepting connections!" -ForegroundColor Green
+            Write-Host "Server is ready and accepting connections!" -ForegroundColor Green
             $connection.Close()
         }
     } catch {
@@ -56,13 +56,13 @@ while (-not $ready -and $attempts -lt $maxAttempts) {
 }
 
 if (-not $ready) {
-    Write-Host "❌ Server failed to start properly after $maxAttempts attempts" -ForegroundColor Red
+    Write-Host "Server failed to start properly after $maxAttempts attempts" -ForegroundColor Red
     Write-Host "   Check the server logs for errors." -ForegroundColor Red
     exit 1
 }
 
 # Step 5: Update status file
-Write-Host "📝 Updating session status..." -ForegroundColor Cyan
+Write-Host "Updating session status..." -ForegroundColor Cyan
 try {
     $statusContent = Get-Content session_status.txt -ErrorAction SilentlyContinue
     if ($statusContent) {
@@ -84,20 +84,20 @@ API_TESTED=FALSE
 }
 
 # Step 6: Final verification
-Write-Host "🧪 Testing basic API endpoint..." -ForegroundColor Cyan
+Write-Host "Testing basic API endpoint..." -ForegroundColor Cyan
 try {
     $testResponse = Invoke-RestMethod -Uri "http://127.0.0.1:8188/model-manager/models" -Method Get -TimeoutSec 10
     if ($testResponse.success) {
-        Write-Host "✅ API endpoint test successful!" -ForegroundColor Green
+        Write-Host "API endpoint test successful!" -ForegroundColor Green
     } else {
-        Write-Host "⚠️  API responded but returned success=false" -ForegroundColor Yellow
+        Write-Host "API responded but returned success=false" -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "⚠️  API endpoint test failed - may need more time to initialize" -ForegroundColor Yellow
+    Write-Host "API endpoint test failed - may need more time to initialize" -ForegroundColor Yellow
 }
 
 Write-Host ""
-Write-Host "✅ Server restart complete!" -ForegroundColor Green
-Write-Host "🌐 ComfyUI is available at: http://127.0.0.1:8188" -ForegroundColor Cyan
-Write-Host "📋 You can now proceed with your testing." -ForegroundColor Cyan
+Write-Host "Server restart complete!" -ForegroundColor Green
+Write-Host "ComfyUI is available at: http://127.0.0.1:8188" -ForegroundColor Cyan
+Write-Host "You can now proceed with your testing." -ForegroundColor Cyan
 Write-Host "" 
