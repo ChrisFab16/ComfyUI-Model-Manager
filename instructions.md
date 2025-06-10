@@ -226,6 +226,45 @@
 ### 3.5 After Making Changes
 1. Update both `next_actions.md`
 
+### 3.6 Git Workflow Protocol
+**⚠️ CRITICAL: Never commit changes to git without explicit user acceptance!**
+
+1. **Pre-commit checklist**:
+   - [ ] All changes have been tested and verified working
+   - [ ] Documentation has been updated to reflect changes
+   - [ ] User has reviewed and approved the changes
+   - [ ] User has explicitly requested or approved the commit
+
+2. **Commit process**:
+   ```powershell
+   # ONLY after user explicitly approves:
+   # 1. Show user what will be committed
+   git status
+   git diff --cached  # if files are already staged
+   git diff          # if files are not staged yet
+   
+   # 2. Ask user for commit approval
+   # "Do you want me to commit these changes to git?"
+   # WAIT for explicit user confirmation
+   
+   # 3. Only proceed if user says YES
+   git add -A
+   git commit -m "User-approved commit message"
+   ```
+
+3. **Never auto-commit**:
+   - ❌ Don't commit automatically after changes
+   - ❌ Don't commit without showing user what's being committed
+   - ❌ Don't commit without explicit user approval
+   - ✅ Always ask permission before any git operations
+   - ✅ Show user the diff/status before committing
+   - ✅ Use user-provided commit messages when possible
+
+4. **Emergency exceptions**:
+   - Even for critical fixes, ask user permission first
+   - If user is unavailable, document changes but don't commit
+   - User can review and commit later when available
+
 ## 4. Context Persistence Strategy
 
 ### 4.1 Critical Information Persistence

@@ -19,6 +19,11 @@ from pathlib import Path
 from typing import Any, Optional, Callable, Union
 from datetime import datetime
 import hashlib
+import re
+import time
+import urllib.request
+import urllib.parse
+import urllib.error
 
 import comfy.utils
 import folder_paths
@@ -922,5 +927,59 @@ def generate_default_preview():
     except Exception as e:
         print_error(f"Failed to generate default preview: {e}")
         return None
+
+
+def transform_model_for_frontend(model_data):
+    """Transform backend model format to frontend format."""
+    if isinstance(model_data, list):
+        return [transform_model_for_frontend(item) for item in model_data]
+    
+    if not isinstance(model_data, dict):
+        return model_data
+    
+    # Create a copy and transform field names
+    transformed = model_data.copy()
+    
+    # Transform path_index to pathIndex
+    if 'path_index' in transformed:
+        transformed['pathIndex'] = transformed.pop('path_index')
+    
+    # Transform sub_folder to subFolder  
+    if 'sub_folder' in transformed:
+        transformed['subFolder'] = transformed.pop('sub_folder')
+    
+    # Transform size to sizeBytes
+    if 'size' in transformed:
+        transformed['sizeBytes'] = transformed.pop('size')
+    
+    # Transform mtime to timestamps
+    if 'mtime' in transformed:
+        mtime = transformed.pop('mtime')
+        timestamp = datetime.fromtimestamp(mtime).isoformat()
+        transformed['createdAt'] = timestamp
+        transformed['updatedAt'] = timestamp
+    
+    # Transform preview_type to previewType
+    if 'preview_type' in transformed:
+        transformed['previewType'] = transformed.pop('preview_type')
+        
+    # Add required frontend fields
+    if 'type' not in transformed and 'model_type' in transformed:
+        transformed['type'] = transformed['model_type']
+    
+    # Generate ID if not present
+    if 'id' not in transformed:
+        id_string = f"{transformed.get('type', '')}/{transformed.get('pathIndex', 0)}/{transformed.get('filename', '')}"
+        transformed['id'] = hashlib.md5(id_string.encode()).hexdigest()
+    
+    # Set default values for required fields
+    transformed.setdefault('isFolder', False)
+    transformed.setdefault('extension', os.path.splitext(transformed.get('filename', ''))[1])
+    
+    # Generate fullname for URL construction
+    if 'filename' in transformed:
+        transformed['fullname'] = transformed['filename']
+    
+    return transformed
 
 

@@ -1,9 +1,12 @@
 import os
-import folder_paths
-from aiohttp import web, WSMsgType
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import hashlib
+import datetime
 import glob
+from aiohttp import web, WSMsgType
+import aiohttp
+import traceback
 
+import folder_paths
 from . import utils
 from .scan_worker import ModelScanWorker
 from .websocket_manager import WebSocketManager
@@ -105,9 +108,11 @@ class ModelManager:
                 cached_results = scan_worker.get_cached_results(folder)
                 if cached_results is not None:
                     utils.print_info(f"Returning cached results for {folder}")
+                    # Transform models for frontend
+                    transformed_results = utils.transform_model_for_frontend(cached_results)
                     return web.json_response({
                         "success": True,
-                        "data": cached_results,
+                        "data": transformed_results,
                         "is_scanning": scan_worker.is_scanning(folder)
                     })
                 

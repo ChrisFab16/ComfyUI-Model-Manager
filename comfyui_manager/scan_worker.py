@@ -237,7 +237,7 @@ class ModelScanWorker:
                         "type": "model_found",
                         "data": {
                             "folder": folder,
-                            "model": model_info
+                            "model": utils.transform_model_for_frontend(model_info)
                         }
                     }),
                     self._loop
