@@ -16,7 +16,126 @@
     "hypernetworks": [],
     "clip": [],
     "custom_nodes": [],
-    "loras": [],
+    "loras": [
+      {
+        "path_index": 0,
+        "sub_folder": "",
+        "filename": "edgBondDollLikenessv1.safetensors",
+        "basename": "edgBondDollLikenessv1",
+        "extension": ".safetensors",
+        "preview": "/model-manager/assets/no-preview.png",
+        "preview_type": "image",
+        "size": 38,
+        "mtime": 1749580397.0212321,
+        "metadata": {
+          "name": "edgBondDollLikenessv1.safetensors",
+          "path": "E:/code/ComfyUI/models/loras\\edgBondDollLikenessv1.safetensors",
+          "size": 38,
+          "type": "safetensors",
+          "created": "2025-06-10T20:32:40.964141",
+          "modified": "2025-06-10T20:33:17.021232",
+          "hash": "75c06236f63c9a3be4726d01d2793e6bc53c1f586dc37ef4a1d8a9cb5db0a274",
+          "model_type": "loras",
+          "base_model": "SD 1.5",
+          "model_version": null,
+          "architecture": null,
+          "dataset": null,
+          "training_params": null,
+          "trigger_words": [
+            "edgJBG_woman",
+            "edgJBG_face",
+            "edgJBG_body"
+          ],
+          "source": "Civitai",
+          "source_url": "https://civitai.com/models/42903?modelVersionId=530857",
+          "license": null,
+          "name_for_display": "edgBondDollLikenessv1",
+          "description": "---\nauthor: EDG\nbaseModel: SD 1.5\nhashes:\n  AutoV1: DE2F2560\n  AutoV2: D755264A0A\n  AutoV3: 6EC3BDBA27D4\n  BLAKE3: 43B00512250E843AE496CAD3F26FF0BD0E1686AE316A456F2D4CFA105BB881B0\n  CRC32: 1A5F553A\n  SHA256: D755264A0A9438B2CB44A8C8C6B893D5E5C803EA61D080A6EA6E22E5BF31DD6F\nmetadata:\n  format: SafeTensor\nmodelPage: https://civitai.com/models/42903?modelVersionId=530857\npreview:\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/687d2ce8-95ed-4755-97f1-fb21b5c3aef0/width=1024/13648968.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/957fdac9-bcab-49bd-9f24-646ab6cb48fe/width=1024/13649358.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/677e4e59-48b2-47e6-852d-d761d5a7220d/width=1024/13649357.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/20edd9be-a1f0-4197-91e5-11aca35cb850/width=1024/13649505.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/fa45ae23-610d-44ed-95be-2f1dce36675e/width=1024/13648952.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/f7f8a2e1-549b-4e28-8d0f-9958a44cbc3e/width=1024/13649107.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/b09371f5-5aec-46d4-a337-7788f653f2b8/width=1024/13650518.jpeg\nwebsite: Civitai\n---\n\n# Trigger Words\n\nedgJBG_woman,edgJBG_face,edgJBG_body,\n\n# About this version\n\nNo description about this version\n\n# Doll Likeness - by EDG\n\nIf you'd like to support me and do more:  \n<https://ko-fi.com/edgonkofi> - commissions open!  \nIf you're looking for a [>>LoRA Making Tutorial<<](https://ko-fi.com/post/EDGs-tutorials-P5P6KT5MT)\n\n### **Want SDXL or Pony dolls? Click here:** **>**[edg XL dolls](https://ko-fi.com/edgonkofi/shop/sdxldolls) >[edg Pony dolls](https://ko-fi.com/edgonkofi/shop/ponydolls) **I have started training and uploading them on my ko-fi shop.** **XL dolls available to date: French, Colombian, Argentinian, Polish, Egyptian, Philippina, Greek, Canadian, Blonde Bimbo and more!**\n\n**Pony dolls undergoing training.**\n\n### The 1.5 dolls are now available on the civitai generation service. Remember that this means that you are allowed to sell the images that you get from the civitai generation but prohibits you from uploading this resource to another generation site.\n\nDoll Likeness - By EDG\n======================\n\nDon't mind me, just jumping on the bandwagon!\n\nOn this model page you will find many many different dolls to play with.\n\nHave fun!\n",
+          "tags": [],
+          "preview_url": null,
+          "has_preview": true,
+          "raw_metadata": {
+            "id": "530857",
+            "modelId": "42903",
+            "name": "edgBondDollLikenessv1",
+            "createdAt": "2024-05-27",
+            "updatedAt": "2024-10-05",
+            "trainedWords": [
+              "edgJBG_woman",
+              "edgJBG_face",
+              "edgJBG_body"
+            ],
+            "baseModel": "SD 1.5",
+            "baseModelType": "Standard",
+            "description": "---\nauthor: EDG\nbaseModel: SD 1.5\nhashes:\n  AutoV1: DE2F2560\n  AutoV2: D755264A0A\n  AutoV3: 6EC3BDBA27D4\n  BLAKE3: 43B00512250E843AE496CAD3F26FF0BD0E1686AE316A456F2D4CFA105BB881B0\n  CRC32: 1A5F553A\n  SHA256: D755264A0A9438B2CB44A8C8C6B893D5E5C803EA61D080A6EA6E22E5BF31DD6F\nmetadata:\n  format: SafeTensor\nmodelPage: https://civitai.com/models/42903?modelVersionId=530857\npreview:\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/687d2ce8-95ed-4755-97f1-fb21b5c3aef0/width=1024/13648968.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/957fdac9-bcab-49bd-9f24-646ab6cb48fe/width=1024/13649358.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/677e4e59-48b2-47e6-852d-d761d5a7220d/width=1024/13649357.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/20edd9be-a1f0-4197-91e5-11aca35cb850/width=1024/13649505.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/fa45ae23-610d-44ed-95be-2f1dce36675e/width=1024/13648952.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/f7f8a2e1-549b-4e28-8d0f-9958a44cbc3e/width=1024/13649107.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/b09371f5-5aec-46d4-a337-7788f653f2b8/width=1024/13650518.jpeg\nwebsite: Civitai\n---\n\n# Trigger Words\n\nedgJBG_woman,edgJBG_face,edgJBG_body,\n\n# About this version\n\nNo description about this version\n\n# Doll Likeness - by EDG\n\nIf you'd like to support me and do more:  \n<https://ko-fi.com/edgonkofi> - commissions open!  \nIf you're looking for a [>>LoRA Making Tutorial<<](https://ko-fi.com/post/EDGs-tutorials-P5P6KT5MT)\n\n### **Want SDXL or Pony dolls? Click here:** **>**[edg XL dolls](https://ko-fi.com/edgonkofi/shop/sdxldolls) >[edg Pony dolls](https://ko-fi.com/edgonkofi/shop/ponydolls) **I have started training and uploading them on my ko-fi shop.** **XL dolls available to date: French, Colombian, Argentinian, Polish, Egyptian, Philippina, Greek, Canadian, Blonde Bimbo and more!**\n\n**Pony dolls undergoing training.**\n\n### The 1.5 dolls are now available on the civitai generation service. Remember that this means that you are allowed to sell the images that you get from the civitai generation but prohibits you from uploading this resource to another generation site.\n\nDoll Likeness - By EDG\n======================\n\nDon't mind me, just jumping on the bandwagon!\n\nOn this model page you will find many many different dolls to play with.\n\nHave fun!\n",
+            "model": {
+              "name": "Doll Likeness - by EDG",
+              "type": "LoRA",
+              "nsfw": false,
+              "poi": false
+            },
+            "stats": {
+              "downloadCount": 755000,
+              "rating": 5.7,
+              "ratingCount": 1100
+            },
+            "files": [
+              {
+                "name": "edgBondDollLikenessv1.safetensors",
+                "id": "530857",
+                "sizeKB": 18541,
+                "type": "Model",
+                "metadata": {
+                  "fp": "fp16",
+                  "size": "full",
+                  "format": "SafeTensor"
+                },
+                "hashes": {
+                  "AutoV1": "DE2F2560",
+                  "AutoV2": "D755264A0A",
+                  "AutoV3": "6EC3BDBA27D4",
+                  "BLAKE3": "43B00512250E843AE496CAD3F26FF0BD0E1686AE316A456F2D4CFA105BB881B0",
+                  "CRC32": "1A5F553A",
+                  "SHA256": "D755264A0A9438B2CB44A8C8C6B893D5E5C803EA61D080A6EA6E22E5BF31DD6F"
+                },
+                "primary": true,
+                "downloadUrl": "https://civitai.com/api/download/models/530857"
+              }
+            ],
+            "images": [
+              "https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/687d2ce8-95ed-4755-97f1-fb21b5c3aef0/width=1024/13648968.jpeg",
+              "https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/957fdac9-bcab-49bd-9f24-646ab6cb48fe/width=1024/13649358.jpeg",
+              "https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/677e4e59-48b2-47e6-852d-d761d5a7220d/width=1024/13649357.jpeg"
+            ],
+            "downloadUrl": "https://civitai.com/api/download/models/530857",
+            "author": "EDG",
+            "website": "Civitai",
+            "modelPage": "https://civitai.com/models/42903?modelVersionId=530857",
+            "trigger_words": [
+              "edgJBG_woman",
+              "edgJBG_face",
+              "edgJBG_body"
+            ],
+            "base_model": "SD 1.5",
+            "source": "Civitai",
+            "source_url": "https://civitai.com/models/42903?modelVersionId=530857"
+          }
+        },
+        "hash": "75c06236f63c9a3be4726d01d2793e6bc53c1f586dc37ef4a1d8a9cb5db0a274",
+        "model_type": "loras",
+        "display_name": "edgBondDollLikenessv1",
+        "description": "---\nauthor: EDG\nbaseModel: SD 1.5\nhashes:\n  AutoV1: DE2F2560\n  AutoV2: D755264A0A\n  AutoV3: 6EC3BDBA27D4\n  BLAKE3: 43B00512250E843AE496CAD3F26FF0BD0E1686AE316A456F2D4CFA105BB881B0\n  CRC32: 1A5F553A\n  SHA256: D755264A0A9438B2CB44A8C8C6B893D5E5C803EA61D080A6EA6E22E5BF31DD6F\nmetadata:\n  format: SafeTensor\nmodelPage: https://civitai.com/models/42903?modelVersionId=530857\npreview:\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/687d2ce8-95ed-4755-97f1-fb21b5c3aef0/width=1024/13648968.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/957fdac9-bcab-49bd-9f24-646ab6cb48fe/width=1024/13649358.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/677e4e59-48b2-47e6-852d-d761d5a7220d/width=1024/13649357.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/20edd9be-a1f0-4197-91e5-11aca35cb850/width=1024/13649505.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/fa45ae23-610d-44ed-95be-2f1dce36675e/width=1024/13648952.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/f7f8a2e1-549b-4e28-8d0f-9958a44cbc3e/width=1024/13649107.jpeg\n- https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/b09371f5-5aec-46d4-a337-7788f653f2b8/width=1024/13650518.jpeg\nwebsite: Civitai\n---\n\n# Trigger Words\n\nedgJBG_woman,edgJBG_face,edgJBG_body,\n\n# About this version\n\nNo description about this version\n\n# Doll Likeness - by EDG\n\nIf you'd like to support me and do more:  \n<https://ko-fi.com/edgonkofi> - commissions open!  \nIf you're looking for a [>>LoRA Making Tutorial<<](https://ko-fi.com/post/EDGs-tutorials-P5P6KT5MT)\n\n### **Want SDXL or Pony dolls? Click here:** **>**[edg XL dolls](https://ko-fi.com/edgonkofi/shop/sdxldolls) >[edg Pony dolls](https://ko-fi.com/edgonkofi/shop/ponydolls) **I have started training and uploading them on my ko-fi shop.** **XL dolls available to date: French, Colombian, Argentinian, Polish, Egyptian, Philippina, Greek, Canadian, Blonde Bimbo and more!**\n\n**Pony dolls undergoing training.**\n\n### The 1.5 dolls are now available on the civitai generation service. Remember that this means that you are allowed to sell the images that you get from the civitai generation but prohibits you from uploading this resource to another generation site.\n\nDoll Likeness - By EDG\n======================\n\nDon't mind me, just jumping on the bandwagon!\n\nOn this model page you will find many many different dolls to play with.\n\nHave fun!\n",
+        "tags": [],
+        "trigger_words": [
+          "edgJBG_woman",
+          "edgJBG_face",
+          "edgJBG_body"
+        ],
+        "base_model": "SD 1.5",
+        "source": "Civitai",
+        "license": null
+      }
+    ],
     "checkpoints": [
       {
         "path_index": 0,
@@ -74,23 +193,23 @@
     ]
   },
   "scan_times": {
-    "configs": 1749579861.2123606,
-    "vae": 1749579861.2185485,
-    "clip_vision": 1749579861.227804,
-    "text_encoders": 1749579861.2273057,
-    "style_models": 1749579861.2400835,
-    "embeddings": 1749579861.2483237,
-    "diffusers": 1749579861.244193,
-    "diffusion_models": 1749579861.227804,
-    "vae_approx": 1749579861.2534568,
-    "upscale_models": 1749579861.2616708,
-    "controlnet": 1749579861.2575796,
-    "gligen": 1749579861.2575796,
-    "photomaker": 1749579861.266869,
-    "hypernetworks": 1749579861.2637265,
-    "clip": 1749579861.267875,
-    "custom_nodes": 1749579861.2884934,
-    "loras": 1749579861.22164,
-    "checkpoints": 1749579871.4442475
+    "configs": 1749580436.062478,
+    "vae": 1749580436.0614455,
+    "clip_vision": 1749580436.0994892,
+    "text_encoders": 1749580436.0791116,
+    "style_models": 1749580436.0820088,
+    "embeddings": 1749580436.088174,
+    "diffusers": 1749580436.0943544,
+    "diffusion_models": 1749580436.0891972,
+    "vae_approx": 1749580436.0974212,
+    "upscale_models": 1749580436.1097698,
+    "controlnet": 1749580436.1087496,
+    "gligen": 1749580436.1066964,
+    "photomaker": 1749580436.1118052,
+    "hypernetworks": 1749580436.1113048,
+    "clip": 1749580436.115108,
+    "custom_nodes": 1749580436.1388345,
+    "loras": 1749581138.7068288,
+    "checkpoints": 1749580445.745905
   }
 }

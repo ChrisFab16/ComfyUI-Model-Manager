@@ -112,9 +112,22 @@ class TaskHandlers:
             
             # Set up headers
             headers = {"User-Agent": config.user_agent}
-            api_key = self._api_key.get_value("civitai")
+            
+            # Get API key using the same method as other parts of the codebase
+            api_key = None
+            if hasattr(self, '_api_key') and self._api_key:
+                api_key = self._api_key.get_value("civitai")
+            
+            if not api_key:
+                # Fallback to settings-based API key (for compatibility)
+                from .. import utils
+                api_key = utils.get_setting_value(None, "api_key.civitai")
+            
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
+                print(f"[ComfyUI Model Manager] Using Civitai API key for download authentication")
+            else:
+                print(f"[ComfyUI Model Manager] No Civitai API key found - download may fail for restricted models")
             
             # Download file with progress updates
             async with aiohttp.ClientSession() as session:
@@ -244,8 +257,16 @@ class TaskHandlers:
         # Set up headers
         headers = {"User-Agent": config.user_agent}
         
-        # Add API key if available
-        api_key = self._api_key.get_value("civitai")
+        # Get API key using the same method as other parts of the codebase
+        api_key = None
+        if hasattr(self, '_api_key') and self._api_key:
+            api_key = self._api_key.get_value("civitai")
+        
+        if not api_key:
+            # Fallback to settings-based API key (for compatibility)
+            from .. import utils
+            api_key = utils.get_setting_value(None, "api_key.civitai")
+        
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         

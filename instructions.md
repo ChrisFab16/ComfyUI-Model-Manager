@@ -54,6 +54,8 @@
 4. Review any pending error messages
 
 ### 3.2 Server Restart Protocol
+**⚠️ CRITICAL: Always follow this complete sequence when backend changes are made!**
+
 1. Server restart is required when:
    - Changes are made to plugin code that affects server-side functionality
    - API endpoints are modified
@@ -66,7 +68,7 @@
    - Updating client-side code only
    - Running unit tests
 
-3. To restart the server:
+3. **MANDATORY RESTART SEQUENCE** (follow ALL steps in order):
    ```powershell
    # Kill any existing ComfyUI server processes
    # First try to kill by port
@@ -150,7 +152,14 @@
    }
    ```
 
-4. IMPORTANT: After server restart
+4. **⚠️ VERIFICATION CHECKLIST** (complete ALL before proceeding):
+   - [ ] Server process is running (check Task Manager or netstat)
+   - [ ] Server accepts connections on port 8188
+   - [ ] Server logs show "ComfyUI-Model-Manager" loaded without errors
+   - [ ] API endpoints respond (test with simple GET request)
+   - [ ] Wait minimum 15 seconds after "To see the GUI go to:" message
+
+5. IMPORTANT: After server restart
    - Wait for the server to fully initialize (check server.log)
    - Verify plugin is loaded without errors in the log
    - Verify server is accepting connections
@@ -217,7 +226,107 @@
 ### 3.5 After Making Changes
 1. Update both `next_actions.md`
 
-## 4. Model Info Format and Browser Issues
+## 4. Context Persistence Strategy
+
+### 4.1 Critical Information Persistence
+To prevent forgetting important procedures when context window resets:
+
+1. **Create status file before each session**:
+   ```powershell
+   # At start of each session, create status file
+   @"
+SERVER_STATUS=UNKNOWN
+LAST_RESTART=$(Get-Date)
+BACKEND_CHANGES_MADE=FALSE
+RESTART_REQUIRED=FALSE
+CURRENT_TASK=model_management_testing
+API_TESTED=FALSE
+"@ | Out-File -FilePath "session_status.txt" -Encoding UTF8
+   ```
+
+2. **Update status after key actions**:
+   ```powershell
+   # After backend changes
+   (Get-Content session_status.txt) -replace "BACKEND_CHANGES_MADE=FALSE", "BACKEND_CHANGES_MADE=TRUE" -replace "RESTART_REQUIRED=FALSE", "RESTART_REQUIRED=TRUE" | Set-Content session_status.txt
+   
+   # After server restart
+   (Get-Content session_status.txt) -replace "SERVER_STATUS=UNKNOWN", "SERVER_STATUS=RUNNING" -replace "RESTART_REQUIRED=TRUE", "RESTART_REQUIRED=FALSE" | Set-Content session_status.txt
+   ```
+
+3. **Check status before any operation**:
+   ```powershell
+   # Always check status first
+   Get-Content session_status.txt
+   if ((Get-Content session_status.txt) -match "RESTART_REQUIRED=TRUE") {
+       Write-Host "⚠️ RESTART REQUIRED - Backend changes detected!"
+       Write-Host "📋 Follow restart protocol in instructions.md section 3.2"
+   }
+   ```
+
+### 4.2 Simplified Restart Script
+Create `restart_server.ps1` for one-command restart:
+
+```powershell
+#!/usr/bin/env powershell
+# Simple server restart script
+Write-Host "🔄 Starting ComfyUI server restart..."
+
+# Step 1: Kill existing processes
+$processId = (Get-NetTCPConnection -LocalPort 8188 -ErrorAction SilentlyContinue).OwningProcess
+if ($processId) { 
+    Write-Host "🛑 Killing existing server process..."
+    Stop-Process -Id $processId -Force
+}
+
+# Step 2: Wait for port to be freed
+Start-Sleep -Seconds 3
+
+# Step 3: Start server
+Write-Host "🚀 Starting server..."
+cd E:\code\ComfyUI
+Start-Process python -ArgumentList "main.py --port 8188" -WindowStyle Hidden
+
+# Step 4: Wait and verify
+Start-Sleep -Seconds 15
+$ready = $false
+$attempts = 0
+while (-not $ready -and $attempts -lt 10) {
+    try {
+        $connection = New-Object System.Net.Sockets.TcpClient
+        $connection.Connect("127.0.0.1", 8188)
+        if ($connection.Connected) {
+            $ready = $true
+            Write-Host "✅ Server is ready!"
+            $connection.Close()
+        }
+    } catch {
+        Write-Host "⏳ Waiting for server... ($($attempts + 1)/10)"
+        Start-Sleep -Seconds 2
+        $attempts++
+    }
+}
+
+if (-not $ready) {
+    Write-Host "❌ Server failed to start properly"
+    exit 1
+}
+
+# Update status
+(Get-Content session_status.txt -ErrorAction SilentlyContinue) -replace "SERVER_STATUS=.*", "SERVER_STATUS=RUNNING" -replace "RESTART_REQUIRED=.*", "RESTART_REQUIRED=FALSE" | Set-Content session_status.txt
+Write-Host "✅ Server restart complete!"
+```
+
+### 4.3 Pre-Action Checklist
+Always run before making changes:
+```powershell
+# Check current status
+Write-Host "📋 Pre-action checklist:"
+Write-Host "1. Server status: $(if (Get-NetTCPConnection -LocalPort 8188 -ErrorAction SilentlyContinue) {'RUNNING'} else {'STOPPED'})"
+Write-Host "2. Backend changes planned: [YES/NO]"
+Write-Host "3. If YES, restart will be required after changes"
+```
+
+## 5. Model Info Format and Browser Issues
 
 ### 4.1 Info File Format Verification
 1. Before making changes:
