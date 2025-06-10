@@ -3,6 +3,8 @@
 ## Overview
 ComfyUI Model Manager is a plugin for ComfyUI that provides model management capabilities including downloading, organizing, and managing AI models from various sources.
 
+whenever you read this document, review the instructions.md document
+
 ## Core Features
 
 ### Model Download Management

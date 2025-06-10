@@ -277,25 +277,8 @@ def get_model_preview_name(model_path: str) -> str:
     if not os.path.exists(model_path):
         return None
 
-    dir_name = os.path.dirname(model_path)
     base_name = os.path.splitext(os.path.basename(model_path))[0]
-
-    # Search for preview images
-    preview_patterns = [
-        f"{base_name}.preview.*",
-        f"{base_name}.jpg",
-        f"{base_name}.jpeg",
-        f"{base_name}.png",
-        f"{base_name}.webp",
-    ]
-
-    for pattern in preview_patterns:
-        matches = glob.glob(os.path.join(dir_name, pattern))
-        if matches:
-            return os.path.basename(matches[0])
-
-    # Return default filename based on model name
-    return f"{base_name}.preview.png"
+    return f"{base_name}.png"
 
 
 def get_model_all_images(model_path: str) -> list[str]:
@@ -653,9 +636,8 @@ def save_model_preview_image(model_path: str, image_file_or_url: Any, platform: 
 
     dir_name = os.path.dirname(model_path)
     base_name = os.path.splitext(os.path.basename(model_path))[0]
-    preview_file = os.path.join(dir_name, f"{base_name}.preview.webp")  # Use WebP for better compression
+    preview_file = os.path.join(dir_name, f"{base_name}.png")  # Use .png extension
     temp_file = preview_file + ".tmp"
-    fallback_file = os.path.join(os.path.dirname(__file__), "assets", "no_preview.webp")
 
     try:
         if isinstance(image_file_or_url, str) and (image_file_or_url.startswith("http://") or image_file_or_url.startswith("https://")):
@@ -676,9 +658,6 @@ def save_model_preview_image(model_path: str, image_file_or_url: Any, platform: 
                         f.write(chunk)
             except requests.exceptions.RequestException as e:
                 print_error(f"Failed to download preview image from {image_file_or_url}: {e}")
-                if os.path.exists(fallback_file):
-                    import shutil
-                    shutil.copy2(fallback_file, preview_file)
                 return
         else:
             # Handle direct file/image input
@@ -692,10 +671,6 @@ def save_model_preview_image(model_path: str, image_file_or_url: Any, platform: 
             
         # Process and optimize the image
         with Image.open(temp_file) as img:
-            # Validate image
-            if not validate_preview_image(img):
-                raise ValueError("Invalid preview image")
-                
             # Convert color mode
             if img.mode in ('RGBA', 'LA'):
                 background = Image.new('RGB', img.size, 'white')
@@ -717,12 +692,8 @@ def save_model_preview_image(model_path: str, image_file_or_url: Any, platform: 
             if img.width > max_size[0] or img.height > max_size[1]:
                 img.thumbnail(max_size, Image.Resampling.LANCZOS)
                 
-            # Save optimized WebP
-            img.save(preview_file, "WEBP", 
-                    quality=85,  # Good quality but smaller size
-                    method=6,    # Best compression
-                    lossless=False,
-                    exact=False)
+            # Save as PNG
+            img.save(preview_file, "PNG", optimize=True)
             
             # Verify the saved file
             verify_img = Image.open(preview_file)
@@ -730,17 +701,15 @@ def save_model_preview_image(model_path: str, image_file_or_url: Any, platform: 
             
     except Exception as e:
         print_error(f"Failed to save preview image for {model_path}: {e}")
-        if os.path.exists(fallback_file):
-            import shutil
-            shutil.copy2(fallback_file, preview_file)
     finally:
         # Clean up temp file
-        try:
-            if os.path.exists(temp_file):
+        if os.path.exists(temp_file):
+            try:
                 os.remove(temp_file)
-        except:
-            pass
-            
+            except:
+                pass
+
+
 def validate_preview_image(img: Image.Image) -> bool:
     """Validate a preview image meets requirements."""
     try:

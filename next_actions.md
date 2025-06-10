@@ -1,19 +1,234 @@
 # ComfyUI Model Manager - Next Actions
 
+## Recent Completed Tasks (Latest Session) ✅
+
+### Task System Testing and Debugging
+- Fixed critical case sensitivity bug in API status checking ✅
+- Implemented detailed step-by-step logging system ✅
+- Added thread-based monitoring for API and filesystem ✅
+- Created comprehensive test script with robust error handling ✅
+- Verified complete download workflow end-to-end ✅
+- Added proper timeout handling and cleanup ✅
+- Implemented concurrent execution with thread pools ✅
+- Added Windows-compatible timeout mechanisms ✅
+
+## Completed Tasks ✅
+
+### 1. Preview Image Handling
+- Fixed preview image naming to match model name (e.g. model.safetensors -> model.png)
+- Updated preview URL handling in server routes
+- Added proper error handling for missing previews
+- Added default no-preview image fallback
+- Fixed preview image saving during model download
+- Fixed preview path resolution in get_preview_info()
+
+### 2. Metadata Information
+- Fixed metadata handling in task handlers
+- Added proper error handling for missing metadata
+- Added progress reporting during downloads
+- Fixed model path scanning to use correct directories
+
+### 3. Task System Improvements
+- Fixed task status response format ✅
+- Added proper error handling in test script ✅
+- Added task status polling with retry and backoff ✅
+- Added task status verification ✅
+- Added task timeout handling ✅
+- Added model path resolution helper ✅
+- Added proper task system initialization ✅
+
+## Remaining Tasks 🔄
+
+### 1. Task System Improvements
+- Fix task status synchronization:
+  - Make task status system independent of WebSocket connections
+  - Add server-side task status tracking
+  - Implement REST API fallback for status checks
+  - Add proper WebSocket initialization on server start
+  - Ensure task status works without browser connection
+  - Add status persistence layer
+  - Add direct task query endpoint
+- Add proper WebSocket status broadcasting
+- Implement reliable task status polling
+- Add task completion confirmation
+- Add task result propagation
+- Add status synchronization logging
+- Handle edge cases (quick completion, errors)
+- Fix task status polling in test script:
+  - Add REST API fallback for status checks
+  - Add retry mechanism for failed status checks
+  - Add proper error propagation
+  - Add timeout handling
+  - Add task cancellation on timeout
+  - Add cleanup for failed tasks
+- Add task cleanup for stalled downloads
+- Add task recovery for interrupted downloads
+- Add proper error propagation from task system
+- Add handling for existing model files:
+  - Add file size verification
+  - Add hash verification
+  - Add metadata update
+  - Add preview update
+  - Add partial download resume
+  - Add cleanup for failed downloads
+
+### 2. Testing
+- Test preview image handling with different model types
+- Test metadata handling with different model types
+- Test path scanning with different model types
+- Test UI updates with different scenarios
+- Add comprehensive task system tests
+- Add download recovery tests
+- Add error handling tests
+- Add tests for existing model handling:
+  - Test model file verification
+  - Test preview image recovery
+  - Test metadata recovery
+  - Test partial download handling
+  - Test download resume functionality
+
+### 3. UI Updates
+- Add automatic UI refresh when new models are added
+- Add loading indicators during model downloads
+- Add error messages for failed downloads
+- Add progress bar for downloads
+- Add task status indicators
+- Add task management UI
+- Add download queue management
+- Add UI for handling existing models:
+  - Show verification status
+  - Show missing components
+  - Add repair/update options
+  - Show download resume options
+  - Add force re-download option
+
+### 4. Error Handling
+- Add better error messages for missing previews
+- Add fallback handling for missing metadata
+- Add validation for model paths
+- Add proper error display in UI
+- Add task error recovery
+- Add download error recovery
+- Add WebSocket error handling
+- Add error handling for existing models:
+  - Handle corrupted model files
+  - Handle missing preview images
+  - Handle missing metadata
+  - Handle incomplete downloads
+  - Handle verification failures
+
 ## Implementation Progress
 
-### Current Phase: Model Information Management ✅
-- Path Normalization Implementation ✅
-- Error Handling Enhancement ✅
-- Model Type Support Expansion ✅
-- Path Validation System ✅
-- Model Info File Creation ✅
-- Preview Image Management ✅
+### Current Phase: Existing Model Handling 🔄
+1. Model File Verification:
+   - Add SHA256 hash verification
+   - Add file size verification
+   - Add format validation
+   - Add integrity checks
+   - Add repair options
+
+2. Preview Image Recovery:
+   - Add preview existence check
+   - Add preview download retry
+   - Add preview validation
+   - Add preview repair options
+   - Add preview update options
+
+3. Metadata Recovery:
+   - Add metadata existence check
+   - Add metadata download retry
+   - Add metadata validation
+   - Add metadata repair options
+   - Add metadata update options
+
+4. Partial Download Handling:
+   - Add download progress tracking
+   - Add resume capability
+   - Add cleanup for failed downloads
+   - Add verification after resume
+   - Add recovery options
+
+### Next Phase: Testing and UI Improvements
+- Test existing model handling
+- Test recovery mechanisms
+- Improve UI feedback
+- Add error handling
+
+## Testing Strategy
+1. Existing Model Tests:
+   - Test model file verification
+   - Test preview image recovery
+   - Test metadata recovery
+   - Test partial download handling
+   - Test download resume functionality
+
+2. Model Discovery Testing
+   - Test model scanning accuracy 🔄
+   - Verify metadata extraction 🔄
+   - Check thumbnail generation 🔄
+   - Validate file operations 🔄
+
+3. UI Testing
+   - Test model browser display
+   - Verify drag-and-drop operations
+   - Check thumbnail loading
+   - Validate metadata display
+
+## Immediate Next Steps
+
+### ✅ COMPLETED: Fix Preview Image Download 
+**Issue Resolved**: Preview images are now downloaded correctly during model downloads
+- Model file: ✅ Downloaded successfully
+- Metadata (.info): ✅ Downloaded successfully  
+- Preview image (.png): ✅ **FIXED - Now downloads correctly!**
+
+**Implementation includes**:
+- Multi-source URL extraction from various API response formats
+- Robust error handling and logging
+- End-to-end testing verification
+- Optimized integration with download workflow
+
+---
+
+### NEW PRIORITIES:
+
+1. **Implement Enhanced Model Handling**:
+
+## Implementation Progress
+### Current Phase: Preview and Metadata System ✅
+- Fixed preview image naming and paths ✅
+- Updated preview URL handling ✅
+- Fixed metadata handling ✅
+- Added proper error handling ✅
+
+### Next Phase: Testing and UI Improvements 🔄
+- Test preview image handling
+- Test metadata handling
+- Improve UI feedback
+- Add error handling
+
+## Implementation Progress
+
+### Current Phase: Model Scanning and Caching System ✅
+- Fix WebSocket broadcast method naming ✅
+- Add proper async/sync bridge in scan worker ✅
+- Enhance error handling for WebSocket messages ✅
+- Add WebSocket connection status monitoring ✅
+- Add message delivery confirmation ✅
+- Implement disk-based cache persistence ✅
+- Add 5-minute cache TTL ✅
+
+### Next Phase: UI and Performance Optimization 🔄
+- Implement lazy loading for model metadata
+- Add grid/list view toggle
+- Enhance drag-and-drop preview
+- Add advanced search filters
+- Optimize thumbnail loading and caching
 
 ### Testing Strategy
-- Unit Tests for Path Operations 🔄
-- Integration Tests for Model Management 🔄
-- End-to-End Testing of Model System 📝
+- Unit Tests for WebSocket Communication ✅
+- Integration Tests for Model Management ✅
+- End-to-End Testing of Model System 🔄
 - Thumbnail Download Verification ✅
 - Preview Display Testing ✅
 
@@ -30,19 +245,21 @@
 8. Fix preview image display for all model types
 9. Add default preview image generation
 10. Fix path index handling for previews
+11. Fix WebSocket broadcast method naming
+12. Implement disk-based cache persistence
+13. Add proper async/sync bridge for WebSocket communication
+14. Add WebSocket connection status monitoring
+15. Enhance WebSocket error handling
 
 ### In Progress 🔄
-1. Testing path handling components
-2. Implementing path validation system
-3. Adding comprehensive logging for path operations
-4. Implementing smart model path handling
-5. Adding thumbnail download functionality
-6. Converting model scanning to background task:
-   - Move scanning to background worker
-   - Add initial fast-path for UI display
-   - Add progress updates via WebSocket
-   - Implement scan result caching
-   - Add incremental update support
+1. Implementing lazy loading for model metadata
+2. Adding advanced search functionality
+3. Enhancing drag-and-drop UX
+4. Optimizing thumbnail loading system
+5. Implementing grid/list view toggle
+6. Adding comprehensive logging system
+7. Implementing smart model path handling
+8. Adding batch operations support
 
 ### Planned 📝
 1. Add batch thumbnail download support
@@ -50,6 +267,10 @@
 3. Add thumbnail resize options
 4. Add thumbnail regeneration capability
 5. Create thumbnail backup system
+6. Add WebSocket reconnection handling
+7. Implement message retry mechanism
+8. Add connection health monitoring
+9. Create WebSocket status dashboard
 
 ## Implementation Notes
 - All path operations now use normalize_path
@@ -57,9 +278,19 @@
 - Enhanced symlink handling and validation
 - Added support for new model types
 - Improved extension handling
+- Fixed WebSocket broadcast method naming
+- Added proper async/sync bridge for WebSocket communication
 
 ## High Priority
-1. Implement model path validation:
+1. Fix WebSocket Communication:
+   - Implement proper async/sync bridge ✅
+   - Add connection status monitoring
+   - Add message delivery confirmation
+   - Add reconnection handling
+   - Add message retry mechanism
+   - Add connection health checks
+
+2. Implement model path validation:
    - Add path existence checks
    - Add symlink validation
    - Add extension verification
@@ -67,27 +298,27 @@
    - Add path cleanup operations
    - Add retry mechanism for failed operations
 
-2. Optimize path operations:
+3. Optimize path operations:
    - Implement path caching
    - Add batch path operations
    - Add path monitoring
    - Add path status updates
    - Add path recovery operations
 
-3. Test path handling system:
+4. Test path handling system:
    - Create test paths
    - Verify path normalization
    - Test symlink handling
    - Test error handling
    - Test concurrent operations
 
-4. Implement path worker state management:
+5. Implement path worker state management:
    - Add path state validation
    - Add path recovery mechanism
    - Add better error classification
    - Add specific error messages
 
-5. Clean up old path handling code:
+6. Clean up old path handling code:
    - Remove deprecated functions
    - Update documentation
    - Verify all paths working
@@ -291,34 +522,89 @@
 # Next Actions
 
 ## Completed Tasks ✅
-- Fixed path handling in resolve_model_base_paths()
-- Added validation for extra_model_paths.yaml configuration
-- Added detailed logging for path scanning operations
-- Removed unnecessary path blacklist
-- Added proper path validation and normalization
-- Updated README with path configuration documentation
-- Added documentation for extra_model_paths.yaml format
 
-## In Progress 🔄
-- Investigating duplicate model entries in browser
-- Improving metadata display format
-- Enhancing thumbnail loading reliability
-- Fixing WebSocket connection stability
+### 1. Preview Image Handling
+- Fixed preview image naming to match model name (e.g. model.safetensors -> model.png)
+- Updated preview URL handling in server routes
+- Added proper error handling for missing previews
+- Added default no-preview image fallback
+- Fixed preview image saving during model download
+- Fixed preview path resolution in get_preview_info()
 
-## Implementation Progress
-### Current Phase: Path Management and Model Discovery
-- Base path resolution ✅
-- Additional paths configuration ✅
-- Path validation and normalization ✅
-- Model scanning optimization 🔄
-- Metadata handling improvements 🔄
+### 2. Metadata Information
+- Fixed metadata handling in task handlers
+- Added proper error handling for missing metadata
+- Added progress reporting during downloads
+- Fixed model path scanning to use correct directories
 
-### Next Phase: UI and User Experience
-- Fix duplicate model entries
-- Improve metadata display
-- Enhance thumbnail loading
-- Add batch operations support
-- Implement drag-and-drop improvements
+### 3. Task System Improvements
+- Fixed task status response format ✅
+- Added proper error handling in test script ✅
+- Added task status polling with retry and backoff ✅
+- Added task status verification ✅
+- Added task timeout handling ✅
+- Added model path resolution helper ✅
+- Added proper task system initialization ✅
+
+## Remaining Tasks 🔄
+
+### 1. Task System Improvements
+- Fix task status synchronization:
+  - Make task status system independent of WebSocket connections
+  - Add server-side task status tracking
+  - Implement REST API fallback for status checks
+  - Add proper WebSocket initialization on server start
+  - Ensure task status works without browser connection
+  - Add status persistence layer
+  - Add direct task query endpoint
+- Add proper WebSocket status broadcasting
+- Implement reliable task status polling
+- Add task completion confirmation
+- Add task result propagation
+- Add status synchronization logging
+- Handle edge cases (quick completion, errors)
+- Fix task status polling in test script:
+  - Add REST API fallback for status checks
+  - Add retry mechanism for failed status checks
+  - Add proper error propagation
+  - Add timeout handling
+  - Add task cancellation on timeout
+  - Add cleanup for failed tasks
+- Add task cleanup for stalled downloads
+- Add task recovery for interrupted downloads
+- Add proper error propagation from task system
+- Add handling for existing model files:
+  - Add file size verification
+  - Add hash verification
+  - Add metadata update
+  - Add preview update
+  - Add partial download resume
+  - Add cleanup for failed downloads
+
+### Current Phase: Task System Stabilization 🔄
+1. WebSocket Independence:
+   - Implementing REST API fallback
+   - Adding server-side task tracking
+   - Making status system browser-independent
+   - Adding status persistence
+
+2. Task Management:
+   - Adding task completion verification
+   - Implementing result propagation
+   - Adding proper cleanup
+   - Handling edge cases
+
+3. Error Handling:
+   - Adding comprehensive error reporting
+   - Implementing recovery mechanisms
+   - Adding status verification
+   - Improving user feedback
+
+### Next Phase: Testing and UI Improvements
+- Test existing model handling
+- Test recovery mechanisms
+- Improve UI feedback
+- Add error handling
 
 ## Testing Strategy
 1. Path Configuration Testing

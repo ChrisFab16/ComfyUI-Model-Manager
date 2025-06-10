@@ -35,6 +35,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { configSetting } from './config'
 import { useWebSocket } from './websocket'
+import { useToast } from 'primevue'
 
 type ModelFolder = Record<string, string[]>
 
@@ -57,11 +58,26 @@ export const useModels = defineStore('models', (store) => {
   const { request } = useRequest()
   const loading = useLoading()
   const ws = useWebSocket()
+  const toast = useToast()
 
   const folders = ref<ModelFolder>({})
   const initialized = ref(false)
   const scanning = ref<Record<string, boolean>>({})
   const models = ref<Record<string, Model[]>>({})
+  const wsReady = ref(false)
+
+  // Handle WebSocket connection status
+  ws.onOpen(() => {
+    wsReady.value = true
+    // If we already have folders but no models, refresh models
+    if (initialized.value && Object.keys(folders.value).length > 0 && Object.keys(models.value).length === 0) {
+      refreshAllModels(false)
+    }
+  })
+
+  ws.onClose(() => {
+    wsReady.value = false
+  })
 
   // Handle WebSocket messages for scanning updates
   ws.onMessage((message) => {
@@ -70,13 +86,17 @@ export const useModels = defineStore('models', (store) => {
       if (!models.value[folder]) {
         models.value[folder] = []
       }
-      models.value[folder].push(model)
-      models.value[folder].sort((a, b) => {
-        if (a.subFolder === b.subFolder) {
-          return a.filename.localeCompare(b.filename)
-        }
-        return a.subFolder.localeCompare(b.subFolder)
-      })
+      // Check for duplicates before adding
+      const exists = models.value[folder].some(m => m.filename === model.filename && m.pathIndex === model.pathIndex)
+      if (!exists) {
+        models.value[folder].push(model)
+        models.value[folder].sort((a, b) => {
+          if (a.subFolder === b.subFolder) {
+            return a.filename.localeCompare(b.filename)
+          }
+          return a.subFolder.localeCompare(b.subFolder)
+        })
+      }
     } else if (message.type === 'scan_complete') {
       const { folder } = message
       scanning.value[folder] = false
@@ -93,13 +113,35 @@ export const useModels = defineStore('models', (store) => {
   })
 
   const refreshModels = async (folder: string) => {
+    if (!wsReady.value) {
+      console.warn('WebSocket not ready, waiting for connection...')
+      return new Promise((resolve) => {
+        const checkWs = setInterval(() => {
+          if (wsReady.value) {
+            clearInterval(checkWs)
+            resolve(refreshModels(folder))
+          }
+        }, 100)
+      })
+    }
+
     loading.show(folder)
     return request(`/models/${folder}`)
       .then((resData) => {
         const { data, is_scanning } = resData
-        models.value[folder] = data
+        models.value[folder] = data || []
         scanning.value[folder] = is_scanning
         return data
+      })
+      .catch((error) => {
+        console.error(`Failed to refresh ${folder} models:`, error)
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: `Failed to refresh ${folder} models: ${error.message || 'Unknown error'}`,
+          life: 5000,
+        })
+        return []
       })
       .finally(() => {
         loading.hide(folder)
@@ -130,8 +172,9 @@ export const useModels = defineStore('models', (store) => {
 
   const refreshAllModels = async (force = false) => {
     const forceRefresh = force ? refreshFolders() : Promise.resolve()
-    models.value = {}
+    models.value = {}  // Clear existing models
     scanning.value = {}
+    
     const excludeScanTypes = app.ui?.settings.getSettingValue<string>(
       configSetting.excludeScanTypes,
     )
@@ -140,21 +183,54 @@ export const useModels = defineStore('models', (store) => {
         ?.split(',')
         .map((type) => type.trim())
         .filter(Boolean) ?? []
-    const results = await forceRefresh.then(() =>
-      Promise.allSettled(
+        
+    try {
+      // Wait for folders to refresh if forced
+      await forceRefresh
+      
+      // Refresh all model folders in parallel
+      const results = await Promise.allSettled(
         Object.keys(folders.value)
           .filter((folder) => !customBlackList.includes(folder))
           .map(async (folder) => {
-            await refreshModels(folder)
-          }),
-      ),
-    )
-    const failures = results.filter((r) => r.status === 'rejected').length
-    if (failures > 0) {
-      console.error(
-        t('partialFailure'),
-        t('refreshFailures', { count: failures }),
+            try {
+              const data = await refreshModels(folder)
+              return { folder, success: true, data }
+            } catch (error) {
+              return { folder, success: false, error }
+            }
+          })
       )
+      
+      // Check for failures
+      const failures = results.filter(
+        (r) => r.status === 'fulfilled' && !r.value.success
+      ).length
+      
+      if (failures > 0) {
+        console.error(
+          t('partialFailure'),
+          t('refreshFailures', { count: failures })
+        )
+        toast.add({
+          severity: 'warn',
+          summary: t('warning'),
+          detail: t('refreshFailures', { count: failures }),
+          life: 5000,
+        })
+      }
+      
+      // Return true if any models were loaded successfully
+      return results.some((r) => r.status === 'fulfilled' && r.value.success)
+    } catch (error) {
+      console.error('Failed to refresh models:', error)
+      toast.add({
+        severity: 'error',
+        summary: t('error'),
+        detail: t('refreshFailed'),
+        life: 5000,
+      })
+      return false
     }
   }
 

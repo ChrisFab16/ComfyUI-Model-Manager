@@ -71,10 +71,12 @@ onMounted(() => {
     console.log('Opening Model Manager dialog')
     const { cardWidth, gutter, aspect, flat } = config
 
-    if (firstOpenManager.value) {
-      models.refresh(true)
+    // Always refresh on open to ensure we have latest data
+    models.refresh(true).then(() => {
       firstOpenManager.value = false
-    }
+    }).catch(error => {
+      console.error('Failed to refresh models:', error)
+    })
 
     dialog.open({
       key: 'model-manager',
@@ -100,6 +102,13 @@ onMounted(() => {
       ],
       minWidth: cardWidth * 2 + gutter + 42,
       minHeight: (cardWidth / aspect) * 0.5 + 162,
+      onShow: () => {
+        // If models haven't loaded yet, try refreshing again
+        if (Object.keys(models.data).length === 0) {
+          console.log('No models loaded, refreshing...')
+          models.refresh(false)
+        }
+      }
     })
   }
 

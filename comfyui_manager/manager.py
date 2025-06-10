@@ -313,31 +313,17 @@ class ModelManager:
     
     def get_preview_info(self, model_path: str, folder: str, path_index: int) -> dict:
         """Get preview image/video information for a model."""
-        preview_images = utils.get_model_all_images(model_path)
-        if preview_images:
-            preview_name = os.path.basename(preview_images[0])
+        preview_name = utils.get_model_preview_name(model_path)
+        if preview_name and os.path.exists(os.path.join(os.path.dirname(model_path), preview_name)):
             return {
                 'type': 'image',
                 'url': f"/model-manager/preview/{folder}/{path_index}/{preview_name}"
             }
         
-        preview_videos = utils.get_model_all_videos(model_path)
-        if preview_videos:
-            preview_name = os.path.basename(preview_videos[0])
-            return {
-                'type': 'video',
-                'url': f"/model-manager/preview/{folder}/{path_index}/{preview_name}"
-            }
-        
-        # Generate default preview if it doesn't exist
-        default_preview = os.path.join(os.path.dirname(__file__), "assets", "no-preview.png")
-        if not os.path.exists(default_preview):
-            utils.generate_default_preview()
-        
         # Return default preview
         return {
             'type': 'image',
-            'url': "/model-manager/preview/default/0/no-preview.png"
+            'url': "/model-manager/assets/no-preview.png"
         }
 
     def get_all_files_entry(self, directory: str, include_hidden_files: bool = False) -> list[os.DirEntry[str]]:

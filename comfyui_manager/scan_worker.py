@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import asyncio
 import threading
 import folder_paths
@@ -7,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Set
 
 from . import utils
+from . import config
 from .websocket_manager import WebSocketManager
 
 class ModelScanWorker:
@@ -19,6 +21,37 @@ class ModelScanWorker:
         self._scanning: Set[str] = set()  # Currently scanning folders
         self._scan_thread: Optional[threading.Thread] = None
         self._cache_lifetime = 300  # Cache lifetime in seconds (5 minutes)
+        self._loop = asyncio.get_event_loop()
+        self._cache_file = os.path.join(config.CACHE_ROOT, "model_scan_cache.json")
+        self._load_cache()
+        
+    def _load_cache(self):
+        """Load cached scan results from disk."""
+        try:
+            if os.path.exists(self._cache_file):
+                with open(self._cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                    self._scan_cache = cache_data.get('scan_cache', {})
+                    self._scan_times = cache_data.get('scan_times', {})
+                    utils.print_info(f"Loaded scan cache for {len(self._scan_cache)} folders")
+        except Exception as e:
+            utils.print_error(f"Failed to load scan cache: {str(e)}")
+            self._scan_cache = {}
+            self._scan_times = {}
+            
+    def _save_cache(self):
+        """Save current scan results to disk."""
+        try:
+            os.makedirs(config.CACHE_ROOT, exist_ok=True)
+            cache_data = {
+                'scan_cache': self._scan_cache,
+                'scan_times': self._scan_times
+            }
+            with open(self._cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, indent=2)
+            utils.print_info(f"Saved scan cache for {len(self._scan_cache)} folders")
+        except Exception as e:
+            utils.print_error(f"Failed to save scan cache: {str(e)}")
         
     @classmethod
     def get_instance(cls) -> 'ModelScanWorker':
@@ -27,6 +60,14 @@ class ModelScanWorker:
                 if cls._instance is None:
                     cls._instance = cls()
         return cls._instance
+        
+    async def _broadcast_message(self, message: dict):
+        """Helper method to broadcast a message via WebSocket."""
+        try:
+            ws_manager = WebSocketManager.get_instance()
+            await ws_manager.broadcast(message["type"], message["data"])
+        except Exception as e:
+            utils.print_error(f"Failed to broadcast message: {str(e)}")
         
     def get_cached_results(self, folder: str) -> Optional[List[dict]]:
         """Get cached scan results if they exist and are not too old."""
@@ -55,23 +96,32 @@ class ModelScanWorker:
                 results = self._scan_folder(folder, include_hidden_files)
                 self._scan_cache[folder] = results
                 self._scan_times[folder] = time.time()
+                self._save_cache()  # Save cache after successful scan
                 
                 # Notify clients of scan completion
-                ws_manager = WebSocketManager.get_instance()
-                ws_manager.broadcast_message({
-                    "type": "scan_complete",
-                    "folder": folder,
-                    "count": len(results)
-                })
+                asyncio.run_coroutine_threadsafe(
+                    self._broadcast_message({
+                        "type": "scan_complete",
+                        "data": {
+                            "folder": folder,
+                            "count": len(results)
+                        }
+                    }), 
+                    self._loop
+                )
             except Exception as e:
                 utils.print_error(f"Error scanning folder {folder}: {str(e)}")
                 # Notify clients of scan error
-                ws_manager = WebSocketManager.get_instance()
-                ws_manager.broadcast_message({
-                    "type": "scan_error",
-                    "folder": folder,
-                    "error": str(e)
-                })
+                asyncio.run_coroutine_threadsafe(
+                    self._broadcast_message({
+                        "type": "scan_error",
+                        "data": {
+                            "folder": folder,
+                            "error": str(e)
+                        }
+                    }),
+                    self._loop
+                )
             finally:
                 self._scanning.remove(folder)
         
@@ -182,12 +232,16 @@ class ModelScanWorker:
                 }
                 
                 # Notify clients of new model found
-                ws_manager = WebSocketManager.get_instance()
-                ws_manager.broadcast_message({
-                    "type": "model_found",
-                    "folder": folder,
-                    "model": model_info
-                })
+                asyncio.run_coroutine_threadsafe(
+                    self._broadcast_message({
+                        "type": "model_found",
+                        "data": {
+                            "folder": folder,
+                            "model": model_info
+                        }
+                    }),
+                    self._loop
+                )
                 
                 return model_info
                 

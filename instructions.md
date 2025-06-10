@@ -83,11 +83,116 @@
    # Wait a moment for ports to be freed
    Start-Sleep -Seconds 2
    
-   # Start the server and wait for ready message
+   # Start the server in background and capture its output
    cd E:\code\ComfyUI
-   python main.py
+   $serverJob = Start-Job -ScriptBlock { 
+       cd $using:PWD
+       python main.py --port 8188 *>&1 | Tee-Object -FilePath "server.log"
+   }
+   
+   # Wait for server to be ready (max 30 seconds)
+   $ready = $false
+   $timeout = 30
+   $start = Get-Date
+   while (-not $ready -and ((Get-Date) - $start).TotalSeconds -lt $timeout) {
+       $output = Receive-Job -Job $serverJob
+       if ($output -match "To see the GUI go to: http://127.0.0.1:8188") {
+           $ready = $true
+           break
+       }
+       Start-Sleep -Seconds 1
+   }
+   
+   if (-not $ready) {
+       Write-Error "Server failed to start within $timeout seconds"
+       return
+   }
+   
+   # Verify server is actually running and accepting connections
+   $maxRetries = 5
+   $retryCount = 0
+   $serverRunning = $false
+   
+   while (-not $serverRunning -and $retryCount -lt $maxRetries) {
+       try {
+           $connection = New-Object System.Net.Sockets.TcpClient
+           $connection.Connect("127.0.0.1", 8188)
+           $serverRunning = $connection.Connected
+           $connection.Close()
+           Write-Host "Server is running and accepting connections"
+       } catch {
+           Write-Host "Waiting for server... Attempt $($retryCount + 1)"
+           Start-Sleep -Seconds 2
+           $retryCount++
+       }
+   }
+   
+   if (-not $serverRunning) {
+       Write-Error "Server is not accepting connections after $maxRetries retries"
+       return
+   }
+   
+   # Keep monitoring server output in background
+   Start-Job -ScriptBlock {
+       while ($true) {
+           $output = Receive-Job -Job $using:serverJob
+           if ($output) {
+               Write-Host $output
+           }
+           Start-Sleep -Seconds 1
+       }
+   } | Out-Null
+   
+   # Only now launch the browser
+   if ($serverRunning) {
+       Start-Process "http://127.0.0.1:8188"
+       Write-Host "Server is running and browser has been launched"
+   }
    ```
-   Note: Wait for the message "To see the GUI go to: http://127.0.0.1:8188" before running tests. This indicates the server is fully initialized and ready to accept connections.
+
+4. IMPORTANT: After server restart
+   - Wait for the server to fully initialize (check server.log)
+   - Verify plugin is loaded without errors in the log
+   - Verify server is accepting connections
+   - Only then proceed with API tests or other operations
+
+5. To check server status:
+   ```powershell
+   # Check if server process exists
+   $processId = (Get-NetTCPConnection -LocalPort 8188 -ErrorAction SilentlyContinue).OwningProcess
+   if (-not $processId) {
+       Write-Host "Server process not found"
+       return
+   }
+   
+   # Check if server is accepting connections
+   try {
+       $connection = New-Object System.Net.Sockets.TcpClient
+       $connection.Connect("127.0.0.1", 8188)
+       if ($connection.Connected) {
+           Write-Host "Server is running and accepting connections on port 8188"
+       }
+       $connection.Close()
+   } catch {
+       Write-Host "Server is not accepting connections"
+   }
+   
+   # View recent server output
+   Get-Content -Path "server.log" -Tail 20 -Wait
+   ```
+
+6. To stop the server:
+   ```powershell
+   # Stop the server jobs
+   Get-Job | Stop-Job
+   Get-Job | Remove-Job
+   
+   # Kill the server process
+   $processId = (Get-NetTCPConnection -LocalPort 8188 -ErrorAction SilentlyContinue).OwningProcess
+   if ($processId) { 
+       Stop-Process -Id $processId -Force
+   }
+   ```
 
 ### 3.3 Windows PowerShell Syntax
 1. Always use Windows-compatible paths:

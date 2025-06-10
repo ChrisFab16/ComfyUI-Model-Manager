@@ -327,20 +327,34 @@ const handleScanUpdate = ({ task_id, file }: { task_id: string; file: Model }) =
   }
 }
 
-const handleScanComplete = ({ task_id, results, total_count }: { task_id: string; results: Model[]; total_count: number }) => {
+const handleScanComplete = async ({ task_id, results, total_count }: { task_id: string; results: Model[]; total_count: number }) => {
   if (task_id === taskId.value) {
     scanModelsList.value = results
     scanTotalCount.value = total_count
     scanCompleteCount.value = results.length
     scanStatus.value = 'completed'
-    isLoading.value = false
-    storeEvent.models.refresh()
-    toast.add({
-      severity: 'success',
-      summary: 'Scan Complete',
-      detail: `Found ${results.length} models`,
-      life: 2000,
-    })
+    isLoading.value = true // Keep loading state while refreshing
+    
+    try {
+      // Wait for models to refresh
+      await storeEvent.models.refresh(true)
+      toast.add({
+        severity: 'success',
+        summary: 'Scan Complete',
+        detail: `Found ${results.length} models`,
+        life: 2000,
+      })
+    } catch (error) {
+      console.error('Failed to refresh models after scan:', error)
+      toast.add({
+        severity: 'error',
+        summary: 'Refresh Error',
+        detail: 'Failed to refresh models after scan',
+        life: 5000,
+      })
+    } finally {
+      isLoading.value = false
+    }
   }
 }
 
